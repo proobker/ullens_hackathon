@@ -11,6 +11,7 @@ import { browserDeviceId, prepareBrowserShell, prepare, syncReceipts, unlock } f
 import { BreakGlass, RecordWorkflows } from './Workflows';
 import { FaceLookup } from './FaceLookup';
 import { RegisterPatient } from './RegisterPatient';
+import { EnrollFace } from './EnrollFace';
 import { HandwrittenUpdate } from './HandwrittenUpdate';
 
 type PortalName='patient'|'paramedic'|'hospital'|'lab';
@@ -137,6 +138,7 @@ export default function Portal({portal}:{portal:PortalName}) {
         <section className="surface pass"><div><span className="eyebrow">Your emergency pass</span><h2>{profile.name}</h2><p className="pass-id">{profile.id}</p>
           <strong className="pass-blood">{profile.entries.find(e=>e.kind==='blood_group')?.text}</strong><p>Historical recorded blood group · verification required</p>
           {profile.entries.find(e=>e.kind==='donor')&&<p>{profile.entries.find(e=>e.kind==='donor')!.text}</p>}
+          {profile.demo&&<p role="note"><strong>FICTIONAL DEMO: date of birth and medical details are generated samples, not verified medical history.</strong></p>}
           <p>Date of birth: {profile.dob}</p></div>{qr&&<img src={qr} width={180} height={180} alt="Opaque emergency locator QR"/>}</section>
         <section className={'surface freshness '+profile.freshness.toLowerCase()}><span className="eyebrow">{t.review}</span>
           <div className="radar"><span className="dot" aria-hidden/><h2>{profile.freshness}</h2></div>
@@ -185,6 +187,7 @@ export default function Portal({portal}:{portal:PortalName}) {
       </div>}
 
       {portal==='hospital'&&<RegisterPatient onRegistered={p=>{setRegistered(r=>[...r,p]);void refresh().catch(()=>{});}}/>}
+      {portal==='hospital'&&<EnrollFace patients={context?.patients??[]}/>}
       {portal==='hospital'&&<HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>}
       {portal==='hospital'&&<FaceLookup patients={registered}/>}
       {portal==='hospital'&&<section className="surface board">

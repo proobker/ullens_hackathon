@@ -18,7 +18,7 @@ UID = re.compile(r"^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$")
 
 def display_pages(card):
     """Page complete fields; never silently truncate an allergy or patient name."""
-    pages = [("Approved summary", "See app for full")]
+    pages = [("FICTIONAL DEMO" if card.get("demo") else "Approved summary", "See app for full")]
     fields = [("Patient name", card["name"])]
     fields += [(e["kind"].replace("_", " "), e["text"]) for e in card["entries"]]
     for title, value in fields:
@@ -124,8 +124,12 @@ def run(port, api):
                     logging.info("Scan accepted by app")
                 result = api.display(event)
                 state = result.get("state")
-                if state == "AUTHORIZED" and event:
-                    updated = display_pages(result["card"])
+                if event and (state == "AUTHORIZED" or (state == "WAITING_APPROVAL" and result.get("demo") is True and isinstance(result.get("name"), str))):
+                    if state == "AUTHORIZED":
+                        updated = display_pages(result["card"])
+                    else:
+                        name = result["name"]
+                        updated = [(name[i:i+16], "Approve in app") for i in range(0, len(name), 16)] or [("Demo patient", "Approve in app")]
                     if updated != pages:
                         pages, page, last_page = updated, 0, now
                     message = pages[page]

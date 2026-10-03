@@ -3,6 +3,9 @@ from scanner import Api, UID, display_pages, lcd
 
 
 class ScannerTests(unittest.TestCase):
+    def test_demo_summary_is_labelled(self):
+        self.assertEqual(display_pages({"demo": True, "name": "demo", "entries": []})[0][0], "FICTIONAL DEMO")
+
     def test_uid_lengths(self):
         for uid in ("DEADBEEF", "11223344556677", "11223344556677889900"):
             self.assertIsNotNone(UID.fullmatch(uid))

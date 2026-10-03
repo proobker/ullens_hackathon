@@ -123,6 +123,22 @@ The SSH tunnel still needs to be started from the laptop after a restart.
 
 ## Using real cards
 
+The enrolled seven-card demo batch now has active profiles. Those specific cards
+show their name and `Approve in app` immediately on the designated reader. All
+medical values and dates of birth are fictional samples; medical entries remain
+behind staff approval. Approved LCD summaries start with `FICTIONAL DEMO`.
+Other cards retain the normal registration and approval behavior below.
+
+Hospital staff can register without a photo, then use **Add or update patient
+photo** in the hospital portal later. Photos are not fabricated; a profile without
+a photo is absent from face matching. Enrollment requires a real single-face
+photo, participant consent, and an assigned hospital clinician.
+
+The operator CLI `rtk proxy npx tsx scripts/enroll-demo-batch.ts BATCH_ID` activates
+a named seven-card batch transactionally. It refuses conflicting card links and
+reuses completed registrations on reruns. Credentials are stored only under
+ignored `.data/BATCH_ID-credentials.json`; never commit or publish that file.
+
 1. Tap a compatible 13.56 MHz ISO 14443-A card. The bridge log prints its UID,
    and the app receives it. A phone or 125 kHz tag may not work with the RC522.
 2. Associate that **actual UID** with the intended patient using the existing

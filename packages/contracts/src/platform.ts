@@ -29,6 +29,7 @@ export const DispatchRequestSchema = z.object({
   requestId: id, grantId: id, destination: id, etaMinutes: z.number().int().min(0).max(240),
 }).strict();
 export const CardSchema = z.object({
+  demo: z.literal(true).optional(),
   patientId: id, name: z.string(), entries: z.array(EntrySchema), notice: z.string(),
   generatedAt: z.iso.datetime(), expiresAt: z.iso.datetime(), receiptId: id,
 }).strict();
@@ -39,6 +40,7 @@ export const AlertSchema = z.object({
 }).strict();
 export type Alert = z.infer<typeof AlertSchema>;
 export const PlatformProfileSchema = z.object({
+  demo: z.literal(true).optional(),
   id, name: z.string(), dob: z.iso.date(), locator: z.string(), revision: z.number().int(),
   entries: z.array(EntrySchema), versions: z.array(ClinicalVersionSchema),
   release: z.object({ revision: z.number().int(), allowedEntryIds: z.array(id), revoked: z.boolean() }),
@@ -51,8 +53,13 @@ export const RegisterPatientSchema = z.object({
   bloodGroup: z.enum(BloodGroups).optional(), allergies: z.string().trim().min(1).max(500).optional(),
   tagUid: ScanSchema.shape.tagUid.optional(),
   username: z.string().regex(/^[a-z0-9_-]{3,32}$/), password: z.string().min(12).max(128),
-  photo: z.string().max(700_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/),
-  descriptor: z.array(z.number().finite()).length(128),
+  photo: z.string().max(700_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/).optional(),
+  descriptor: z.array(z.number().finite()).length(128).optional(),
+}).strict().refine(v => Boolean(v.photo) === Boolean(v.descriptor), {message:'Photo and descriptor must be supplied together'});
+export const FaceEnrollmentSchema = z.object({
+  requestId:id, consent:z.literal(true),
+  photo:z.string().max(700_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/),
+  descriptor:z.array(z.number().finite()).length(128),
 }).strict();
 export type RegisterPatientRequest = z.input<typeof RegisterPatientSchema>;
 export type RegisteredPatient = { patientId: string; name: string; locator: string; username: string };

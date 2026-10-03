@@ -5,6 +5,7 @@ import { hashPassword } from '../storage/seed.js';
 
 export type Staff = { id: string; role: string; facility: string; unit: string; reader: string };
 export type Profile = {
+  demo?: true;
   id: string; name: string; dob: string; locator: string; revision: number; entries: Entry[];
   versions: ClinicalVersion[]; reviewDue: string;
   release: { revision: number; allowedEntryIds: string[]; revoked: boolean };

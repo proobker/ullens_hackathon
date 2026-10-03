@@ -7,6 +7,7 @@ import { openDatabase } from '../server/src/storage/database';
 import { seedDatabase } from '../server/src/storage/seed';
 import { createApp } from '../server/src/app';
 import { PlatformStore, type Profile, sixMonths } from '../server/src/platform/store';
+import { enrollDemoBatch } from '../server/src/platform/enroll-demo-batch';
 describe('combined platform',()=>{
   let dir:string,db:ReturnType<typeof openDatabase>,app:ReturnType<typeof createApp>,store:PlatformStore;
   let now=new Date('2026-10-03T04:30:00.000Z');
@@ -198,7 +199,7 @@ describe('combined platform',()=>{
     const plain=await hospital.post(base+'/patients').send(body('d'));expect(plain.status).toBe(200);
     expect(store.verifyProfile(store.get<Profile>('profile',plain.body.patientId)!)).toBe(true);
   });
-  it('requires a JPEG face photo at registration and serves the saved face to hospital staff only',async()=>{
+  it('validates optional photo pairs and serves saved faces to hospital staff only',async()=>{
     const hospital=await actor('hospital');
     const body={requestId:'reg-face',name:'Face Test',dob:'1990-01-15',username:'facetest',password:'synthetic-pass-1',...face};
     const {photo:_photo,...noPhoto}=body;
@@ -215,6 +216,58 @@ describe('combined platform',()=>{
       const a=await actor(name);
       expect((await a.get(base+'/faces')).status).toBe(404);expect((await a.get(base+'/faces/'+reg.body.patientId+'/photo')).status).toBe(404);
     }
+  });
+  it('registers without a photo and enrolls a face later without changing the patient or tag',async()=>{
+    const hospital=await actor('hospital');
+    const result=await hospital.post(base+'/patients').send({requestId:'photo-later',name:'Photo Later',dob:'1990-01-15',username:'later',password:'synthetic-pass-1',tagUid:'AABBCCDD'});
+    expect(result.status).toBe(200);
+    const id=result.body.patientId,before=store.get<Profile>('profile',id);
+    expect((await hospital.get(base+'/faces')).body).toEqual([]);
+    const payload={requestId:'face-later',consent:true,...face};
+    expect((await (await actor('lab')).post(base+'/profiles/'+id+'/face').send(payload)).status).toBe(404);
+    expect((await hospital.post(base+'/profiles/'+id+'/face').send({...payload,consent:false})).status).toBe(400);
+    expect((await hospital.post(base+'/profiles/'+id+'/face').send(payload)).status).toBe(200);
+    expect((await hospital.post(base+'/profiles/'+id+'/face').send(payload)).status).toBe(200);
+    expect(store.get('profile',id)).toEqual(before);
+    expect(store.get('tag','AABBCCDD')).toEqual({patientId:id,revoked:false});
+    expect((await hospital.get(base+'/faces')).body).toHaveLength(1);
+  });
+  function demoBatch(){
+    const cards=Array.from({length:7},(_,i)=>({order:i+1,tagUid:'AABBCC0'+i,name:'Demo person '+i,status:'NAMED_PENDING_PROFILE'}));
+    store.put('rfid-enrollment-batch','batch',{id:'batch',deviceId:'reader-demo',status:'NAMED',cards});
+    return cards;
+  }
+  it('activates seven demo cards idempotently and exposes only the name before approval',async()=>{
+    const cards=demoBatch(),passwords=Array.from({length:7},(_,i)=>'unique-demo-password-'+i);
+    const rows=enrollDemoBatch(store,'batch',passwords,()=>now);
+    expect(enrollDemoBatch(store,'batch',passwords,()=>now)).toEqual(rows);
+    expect(store.all('face')).toHaveLength(0);
+    const a=await actor('paramedic');
+    for(const [i,card] of cards.entries()){
+      const eventId='demo-'+i;
+      now=new Date(now.getTime()+1);
+      expect((await request(app).post(base+'/rfid/scans').set('Authorization','Bearer synthetic-reader-secret-change-before-hardware').send({version:1,deviceId:'reader-demo',eventId,tagUid:card.tagUid})).status).toBe(200);
+      expect((await lcd(eventId)).body).toEqual({state:'WAITING_APPROVAL',name:card.name,demo:true});
+      const link=(await a.get(base+'/rfid/pending')).body;
+      const g=await a.post(base+'/grants').send({requestId:'demo-grant-'+i,patientId:link.patientId,linkageId:link.linkageId,deviceId:'browser',purpose:'Fictional demo review',confirmed:true});
+      expect(g.status).toBe(200);
+      const displayed=(await lcd(eventId)).body;
+      expect(displayed.state).toBe('AUTHORIZED');expect(displayed.card.demo).toBe(true);
+      expect(displayed.card.entries).toHaveLength(4);
+      expect(displayed.card.notice).toContain('FICTIONAL');
+      expect(displayed.card.entries.every((e:{text:string})=>e.text.startsWith('DEMO:'))).toBe(true);
+    }
+    const p=store.get<Profile>('profile',rows[6]!.patientId)!;p.release.revoked=true;store.put('profile',p.id,p);
+    expect((await lcd('demo-6')).body).toEqual({state:'EXPIRED'});
+  });
+  it('rolls back the whole demo enrollment if a card already belongs to another patient',()=>{
+    const cards=demoBatch();
+    store.put('tag',cards[3]!.tagUid,{patientId:pid,revoked:false});
+    const count=store.all('profile').length;
+    expect(()=>enrollDemoBatch(store,'batch',Array(7).fill('long-demo-password'),()=>now)).toThrow('already assigned');
+    expect(store.all('profile')).toHaveLength(count);
+    expect(store.get('tag',cards[0]!.tagUid)).toBeUndefined();
+    expect(store.get('tag',cards[3]!.tagUid)).toEqual({patientId:pid,revoked:false});
   });
   it('signs clinician-confirmed handwritten OCR entries and keeps the original image',async()=>{
     const lab=await actor('lab'),patient=await actor('siddharth');

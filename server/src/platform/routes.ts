@@ -9,6 +9,7 @@ import { operationsRouter } from './operations.js';
 import { medicationsRouter } from './medications.js';
 import { lifecycle, type LifecycleEvent } from '@pran-rekha/domain';
 import type { MedicationRecord } from '@pran-rekha/contracts';
+import { FaceEnrollmentSchema } from '@pran-rekha/contracts/platform';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
 type Linkage = {id:string;actor:string;patient:string;expiresAt:string;rfid?:{deviceId:string;eventId:string}};
 type Scan = {deviceId:string;tagUid:string;eventId:string;receivedAt:string};
@@ -45,7 +46,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       return {...entry,text:entry.text+' · '+view.state+' · actual use not established'};
     });
     const receiptId=store.receipt(pid,actor,purpose,entries.map(e=>e.id),clock());
-    return CardSchema.parse({patientId:pid,name:p.name,entries,notice:NOTICE,generatedAt:clock().toISOString(),expiresAt,receiptId});
+    return CardSchema.parse({...(p.demo?{demo:true}:{}),patientId:pid,name:p.name,entries,notice:(p.demo?'FICTIONAL DEMO DATA - not medical history. ':'')+NOTICE,generatedAt:clock().toISOString(),expiresAt,receiptId});
   }
   function grant(id:string,actor:string,sessionHash:string) {
     const g=store.get<Grant>('grant',id);
@@ -78,8 +79,8 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       res.json(result);
     }catch(e){next(e);}
   });
-  // A reader can display only its latest scan, after its paired staff member
-  // authorizes that exact RFID linkage. A scan alone never discloses identity.
+  // Medical details require approval. Explicitly enrolled demo cards may show
+  // their name on the designated reader while waiting for approval.
   router.get('/rfid/display',(req,res,next)=>{
     try {
       const input=z.object({deviceId:ScanSchema.shape.deviceId,eventId:ScanSchema.shape.eventId.optional()}).strict().parse(req.query);
@@ -93,7 +94,16 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const tag=store.get<{patientId:string;revoked:boolean}>('tag',scan.tagUid);
       if(!tag||tag.revoked){res.json({state:'UNKNOWN_TAG'});return;}
       const display=store.get<ReaderDisplay>('reader-display',reader.id+':'+scan.eventId);
-      if(!display){res.json({state:Date.parse(scan.receivedAt)>clock().getTime()-120000?'WAITING_APPROVAL':'EXPIRED'});return;}
+      if(!display){
+        if(Date.parse(scan.receivedAt)<=clock().getTime()-120000){res.json({state:'EXPIRED'});return;}
+        const enrollment=store.get<{patientId:string;deviceId:string}>('demo-name-display',scan.tagUid);
+        const candidate=store.get<Profile>('profile',tag.patientId);
+        if(enrollment?.patientId===tag.patientId&&enrollment.deviceId===reader.id&&candidate?.demo&&!candidate.release.revoked){
+          if(!store.verifyProfile(candidate))throw new Error('SIGNATURE_INVALID');
+          res.json({state:'WAITING_APPROVAL',name:candidate.name,demo:true});return;
+        }
+        res.json({state:'WAITING_APPROVAL'});return;
+      }
       const g=store.get<Grant>('grant',display.grantId);
       const binding=g&&store.get<{sessionHash:string}>('grant-session',g.id);
       const p=store.get<Profile>('profile',tag.patientId);
@@ -200,7 +210,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const s=res.locals.staff as Staff;
       if(!hospitalStaff(s))return unavailable();
       const input=RegisterPatientSchema.parse(req.body);
-      if(jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
+      if(input.photo&&jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
       res.json(store.mutate(s.id,input.requestId,{...input,password:digest(input.password)},()=>{
         const actorId='portal-'+input.username;
         if(store.db.prepare('SELECT 1 FROM actors WHERE id=? OR username=?').get(actorId,input.username))throw new Error('CONFLICT');
@@ -222,9 +232,23 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         // The registering clinician may update this patient's record (e.g. handwritten notes).
         store.put('assignment','hospital:'+pid,{actor:s.id,patient:pid});
         // Demo deviation from the session-only face rule: photo and descriptor persist in the demo database (hospital-only).
-        store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
+        if(input.photo&&input.descriptor)store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
         store.receipt(pid,s.id,'Hospital patient registration',[],clock());
         return {patientId:pid,name:input.name,locator,username:input.username};
+      }));
+    }catch(e){next(e);}
+  });
+  router.post('/profiles/:id/face',(req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff,pid=String(req.params.id);
+      if(!hospitalStaff(s)||!allowedFull(s,pid))return unavailable();
+      const input=FaceEnrollmentSchema.parse(req.body);
+      if(jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
+      profile(pid);
+      res.json(store.mutate(s.id,input.requestId,{pid,...input},()=>{
+        store.put('face',pid,{patientId:pid,photo:input.photo,descriptor:input.descriptor,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
+        store.receipt(pid,s.id,'Face enrollment updated',[],clock());
+        return {patientId:pid,updated:true};
       }));
     }catch(e){next(e);}
   });
