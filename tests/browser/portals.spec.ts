@@ -85,3 +85,19 @@ test('hospital registers a patient who can then sign in to the patient portal',a
   await expect(page.getByText('Test Patient',{exact:true})).toBeVisible();
   await expect(page.getByText(pid,{exact:true})).toBeVisible();
 });
+test('theme defaults to light and persists the user choice across pages and reloads',async({page})=>{
+  const bg=()=>page.locator('.platform').evaluate(el=>getComputedStyle(el).backgroundColor);
+  await page.goto('/hospital');
+  expect(await page.locator('html').getAttribute('data-theme')).toBeNull();
+  expect(await bg()).toBe('rgb(248, 250, 252)');
+  await page.getByRole('button',{name:'Switch to dark mode'}).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  expect(await bg()).toBe('rgb(15, 23, 42)');
+  await page.goto('/patient');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Switch to light mode'})).toBeVisible();
+  expect(await bg()).toBe('rgb(15, 23, 42)');
+  await page.getByRole('button',{name:'Switch to light mode'}).click();
+  expect(await bg()).toBe('rgb(248, 250, 252)');
+});
