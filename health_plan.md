@@ -217,6 +217,8 @@ A live matcher needs an actual face-recognition embedding model plus local compa
 
 Candidate result states: `NO_MATCH`, `CANDIDATES`, `AMBIGUOUS`, `UNAVAILABLE`. Return at most three opaque candidate handles; more plausible candidates yield `AMBIGUOUS`. Avoid confidence percentages and the words “identity confirmed.” Two captures of one face are still one candidate aid. A mismatch with the scanned locator blocks that attempt until the operator restarts linkage.
 
+**Demo deviation (hospital registration):** hospital staff registering a synthetic patient must capture one face photo with the participant's recorded consent. The JPEG (≤480 px) and its 128-value descriptor are stored in the demo SQLite database (`platform_objects`, kind `face`), readable only by hospital-demo clinicians; each photo view writes an access receipt, and `npm run demo:reset` deletes them. Matching still runs in the browser and still returns candidates only. This replaces the session-only rule for registered participants; session enrollment remains in-memory.
+
 No liveness, anti-spoofing, population accuracy, or performance across demographic groups is claimed. If model setup or lighting fails, show the labelled simulation or use the locator path. Simulation cannot silently replace a failed live match.
 
 ### 5.3 NFC, QR, and fingerprint

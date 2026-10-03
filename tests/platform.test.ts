@@ -11,6 +11,7 @@ describe('combined platform',()=>{
   let dir:string,db:ReturnType<typeof openDatabase>,app:ReturnType<typeof createApp>,store:PlatformStore;
   let now=new Date('2026-10-03T04:30:00.000Z');
   const pid='PR-9042-8819',base='/api/platform';
+  const face={photo:'data:image/jpeg;base64,'+Buffer.from([0xff,0xd8,0xff,0xe0,0,0x10]).toString('base64'),descriptor:Array.from({length:128},(_,i)=>i/1000)};
   beforeEach(()=>{dir=mkdtempSync(join(tmpdir(),'pran-platform-'));db=openDatabase({databasePath:join(dir,'db.sqlite')});seedDatabase(db,resolve('fixtures/documents'));now=new Date('2026-10-03T04:30:00.000Z');app=createApp({database:db,clock:()=>now,secureCookies:false});store=new PlatformStore(db);});
   afterEach(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
   async function actor(name:string){const a=request.agent(app);expect((await a.post('/api/session').send({username:name,password:'pran-demo-'+name})).status).toBe(201);return a;}
@@ -119,7 +120,7 @@ describe('combined platform',()=>{
   });
   it('hospital registers a patient with a signed record, login and locator; release starts empty',async()=>{
     const hospital=await actor('hospital');
-    const body={requestId:'reg-1',name:'Asha Gurung',dob:'1990-01-15',bloodGroup:'B+',allergies:'Latex — rash recorded',tagUid:'cafe1234',username:'asha',password:'synthetic-pass-1'};
+    const body={requestId:'reg-1',name:'Asha Gurung',dob:'1990-01-15',bloodGroup:'B+',allergies:'Latex — rash recorded',tagUid:'cafe1234',username:'asha',password:'synthetic-pass-1',...face};
     const reg=await hospital.post(base+'/patients').send(body);
     expect(reg.status).toBe(200);expect(reg.body).toEqual({patientId:expect.stringMatching(/^PR-\d{4}-\d{4}$/),name:'Asha Gurung',locator:expect.stringMatching(/^opaque-/),username:'asha'});
     expect(JSON.stringify(reg.body)).not.toContain('synthetic-pass-1');
@@ -135,7 +136,7 @@ describe('combined platform',()=>{
     expect((await medic.post(base+'/cards').send({grantId:grant.body.id})).body.entries).toEqual([]);
   });
   it('limits registration to hospital staff and rejects duplicate usernames or tags',async()=>{
-    const body=(n:string,extra={})=>({requestId:'reg-'+n,name:'Synthetic '+n,dob:'1990-01-15',username:'user'+n,password:'synthetic-pass-1',...extra});
+    const body=(n:string,extra={})=>({requestId:'reg-'+n,name:'Synthetic '+n,dob:'1990-01-15',username:'user'+n,password:'synthetic-pass-1',...face,...extra});
     for(const name of ['paramedic','lab','siddharth'])expect((await (await actor(name)).post(base+'/patients').send(body(name))).status).toBe(404);
     const hospital=await actor('hospital');
     expect((await hospital.post(base+'/patients').send(body('a',{username:'siddharth'}))).status).toBe(409);
@@ -143,6 +144,24 @@ describe('combined platform',()=>{
     expect((await hospital.post(base+'/patients').send(body('c',{password:'short'}))).status).toBe(400);
     const plain=await hospital.post(base+'/patients').send(body('d'));expect(plain.status).toBe(200);
     expect(store.verifyProfile(store.get<Profile>('profile',plain.body.patientId)!)).toBe(true);
+  });
+  it('requires a JPEG face photo at registration and serves the saved face to hospital staff only',async()=>{
+    const hospital=await actor('hospital');
+    const body={requestId:'reg-face',name:'Face Test',dob:'1990-01-15',username:'facetest',password:'synthetic-pass-1',...face};
+    const {photo:_photo,...noPhoto}=body;
+    expect((await hospital.post(base+'/patients').send({...noPhoto,requestId:'reg-nophoto'})).status).toBe(400);
+    expect((await hospital.post(base+'/patients').send({...body,requestId:'reg-png',photo:'data:image/jpeg;base64,'+Buffer.from('not a jpeg').toString('base64')})).status).toBe(400);
+    expect((await hospital.post(base+'/patients').send({...body,requestId:'reg-short',descriptor:[1,2,3]})).status).toBe(400);
+    const reg=await hospital.post(base+'/patients').send(body);expect(reg.status).toBe(200);
+    const gallery=await hospital.get(base+'/faces');
+    expect(gallery.body).toEqual([{patientId:reg.body.patientId,name:'Face Test',descriptor:face.descriptor}]);
+    const photo=await hospital.get(base+'/faces/'+reg.body.patientId+'/photo');
+    expect(photo.status).toBe(200);expect(photo.headers['content-type']).toBe('image/jpeg');expect(photo.headers['cache-control']).toBe('no-store');
+    expect((db.prepare('SELECT body FROM platform_receipts WHERE patient_id=?').all(reg.body.patientId) as {body:string}[]).map(r=>JSON.parse(r.body).purpose)).toContain('Face photo viewed');
+    for(const name of ['paramedic','lab','siddharth']){
+      const a=await actor(name);
+      expect((await a.get(base+'/faces')).status).toBe(404);expect((await a.get(base+'/faces/'+reg.body.patientId+'/photo')).status).toBe(404);
+    }
   });
   it('rejects cross-origin mutations and preserves calendar month boundaries',async()=>{
     expect((await request(app).post('/api/session').set('Origin','https://attacker.test').send({username:'lab',password:'pran-demo-lab'})).status).toBe(403);

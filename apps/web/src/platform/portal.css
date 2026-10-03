@@ -120,3 +120,11 @@
 .register-grid label.check, .register-grid button { grid-column: 1 / -1; }
 .register-result { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 10px; padding: 12px; }
 .register-result img { border-radius: 8px; background: #fff; }
+.register-photo { grid-column: 1 / -1; display: grid; gap: 8px; border: 1px dashed var(--line); border-radius: 10px; padding: 12px; margin: 0; }
+.register-photo legend { font-size: .85rem; font-weight: 600; padding: 0 4px; }
+.register-result { grid-template-columns: minmax(0, 1fr) auto auto; }
+.face-candidates { list-style: none; padding: 0; display: grid; gap: 8px; }
+.face-candidates li { display: flex; align-items: center; gap: 10px; }
+.face-candidates img { border-radius: 8px; object-fit: cover; border: 1px solid var(--line); }
+.face-counts { font-size: .85rem; }
+@media (max-width: 560px) { .register-result { grid-template-columns: 1fr; } }

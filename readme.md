@@ -47,4 +47,4 @@ rtk npm run build
 
 Included: fixture authentication, source-linked patient timeline, exact source preview, prescription derivation, English/Nepali UI toggle, and negative access tests.
 
-Not included: document uploads, emergency grants or cards, face matching, NFC, offline snapshots, OCR, clinical review, or public deployment. The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.
+Not included: document uploads, emergency grants or cards, NFC, offline snapshots, OCR, clinical review, or public deployment. Hospital face lookup is candidate-only: registered face photos and descriptors are stored in the demo SQLite database (see `health_plan.md` §5.2). The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.

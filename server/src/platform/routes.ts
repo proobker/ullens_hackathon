@@ -11,10 +11,13 @@ import { lifecycle, type LifecycleEvent } from '@pran-rekha/domain';
 import type { MedicationRecord } from '@pran-rekha/contracts';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
 type Linkage = {id:string;actor:string;patient:string;expiresAt:string};
+type Face = {patientId:string;descriptor:number[];photo:string;photoSha256:string;createdBy:string;createdAt:string};
 type Reader = {id:string;tokenHash:string;revoked:boolean;lastSeen:string|null};
 const text=z.string().min(1).max(500);
 const mutation=z.object({requestId:text,expectedRevision:z.number().int().nonnegative()});
 const unavailable=()=>{throw new Error('FORBIDDEN');};
+const hospitalStaff=(s:Staff)=>s.role==='clinician'&&s.facility==='hospital-demo';
+const jpegBytes=(dataUrl:string)=>Buffer.from(dataUrl.slice(dataUrl.indexOf(',')+1),'base64');
 
 export function platformRouter(store:PlatformStore,clock:()=>Date) {
   const router=Router();
@@ -134,8 +137,9 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
   router.post('/patients',(req,res,next)=>{
     try{
       const s=res.locals.staff as Staff;
-      if(s.role!=='clinician'||s.facility!=='hospital-demo')return unavailable();
+      if(!hospitalStaff(s))return unavailable();
       const input=RegisterPatientSchema.parse(req.body);
+      if(jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
       res.json(store.mutate(s.id,input.requestId,{...input,password:digest(input.password)},()=>{
         const actorId='portal-'+input.username;
         if(store.db.prepare('SELECT 1 FROM actors WHERE id=? OR username=?').get(actorId,input.username))throw new Error('CONFLICT');
@@ -154,9 +158,25 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         const locator='opaque-'+randomUUID();
         store.put('profile',pid,{id:pid,name:input.name,dob:input.dob,locator,revision:1,entries,versions,reviewDue,release:{revision:1,allowedEntryIds:[],revoked:false}} satisfies Profile);
         if(input.tagUid)store.put('tag',input.tagUid,{patientId:pid,revoked:false});
+        // Demo deviation from the session-only face rule: photo and descriptor persist in the demo database (hospital-only).
+        store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
         store.receipt(pid,s.id,'Hospital patient registration',[],clock());
         return {patientId:pid,name:input.name,locator,username:input.username};
       }));
+    }catch(e){next(e);}
+  });
+  router.get('/faces',(_req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff;if(!hospitalStaff(s))return unavailable();
+      res.json(store.all<Face>('face').map(f=>({patientId:f.patientId,name:store.get<Profile>('profile',f.patientId)?.name??f.patientId,descriptor:f.descriptor})));
+    }catch(e){next(e);}
+  });
+  router.get('/faces/:id/photo',(req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff;if(!hospitalStaff(s))return unavailable();
+      const face=store.get<Face>('face',String(req.params.id));if(!face)return unavailable();
+      store.receipt(face.patientId,s.id,'Face photo viewed',[],clock());
+      res.set({'Content-Type':'image/jpeg','Cache-Control':'no-store'}).send(jpegBytes(face.photo));
     }catch(e){next(e);}
   });
   router.post('/linkage',(req,res,next)=>{

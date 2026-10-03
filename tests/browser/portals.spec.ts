@@ -1,4 +1,11 @@
-import { test,expect } from '@playwright/test';
+import { test,expect,type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+// Single-face crop of the face-api package's demo photo, made in-page so no face image is committed to the repo.
+async function faceCrop(page:Page){
+  const src='data:image/jpeg;base64,'+readFileSync('node_modules/@vladmandic/face-api/demo/sample1.jpg').toString('base64');
+  const data=await page.evaluate(async src=>{const img=new Image();img.src=src;await img.decode();const c=document.createElement('canvas');c.width=380;c.height=380;c.getContext('2d')!.drawImage(img,330,330,380,380,0,0,380,380);return c.toDataURL('image/jpeg',0.92).split(',')[1]!;},src);
+  return {name:'face.jpg',mimeType:'image/jpeg',buffer:Buffer.from(data,'base64')};
+}
 test('patient portal, responsive source evidence and role isolation',async({page})=>{
   await page.goto('/patient');
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
@@ -40,9 +47,9 @@ test('hospital face lookup stays disabled until consent',async({page})=>{
   await page.goto('/hospital');
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Possible patient lookup'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Use camera'})).toBeDisabled();
-  await page.getByLabel('Consent to session-only face candidate matching').check();
-  await expect(page.getByRole('button',{name:'Use camera'})).toBeEnabled({timeout:30000});
+  await expect(page.locator('.face-lookup').getByRole('button',{name:'Use camera'})).toBeDisabled();
+  await page.getByLabel('Consent to face candidate matching for this image').check();
+  await expect(page.locator('.face-lookup').getByRole('button',{name:'Use camera'})).toBeEnabled({timeout:30000});
 });
 test('hospital registers a patient who can then sign in to the patient portal',async({page})=>{
   const username='pw'+Date.now().toString(36);
@@ -54,10 +61,22 @@ test('hospital registers a patient who can then sign in to the patient portal',a
   await page.getByLabel('Patient username').fill(username);
   await page.getByLabel('Initial password').fill('synthetic-pass-1');
   await page.getByLabel(/Synthetic demonstration data only/).check();
-  await page.getByRole('button',{name:'Register patient'}).click();
+  await page.getByLabel(/consents to storing this face photo/).check();
+  const register=page.getByRole('button',{name:'Register patient'});
+  await expect(register).toBeDisabled();
+  await page.locator('.register-photo input[type=file]').setInputFiles(await faceCrop(page));
+  await expect(page.getByText('One face detected.',{exact:false})).toBeVisible({timeout:60000});
+  await expect(register).toBeEnabled();
+  await register.click();
   const result=page.locator('.register-result');
   await expect(result.getByText(/^PR-\d{4}-\d{4}$/)).toBeVisible();
   const pid=await result.locator('.pass-id').innerText();
+  const lookup=page.locator('.face-lookup');
+  await lookup.getByLabel('Consent to face candidate matching for this image').check();
+  await expect(lookup.getByText(/Registered faces: [1-9]/)).toBeVisible({timeout:60000});
+  await lookup.locator('input[type=file]').setInputFiles(await faceCrop(page));
+  await expect(lookup.locator('.face-candidates').getByText('Test Patient · '+pid+' · registered')).toBeVisible({timeout:60000});
+  await expect(lookup.getByRole('img',{name:'Registered photo of Test Patient'}).first()).toBeVisible();
   await page.getByRole('button',{name:/Sign out/}).click();
   await page.goto('/patient');
   await page.getByLabel('Username').fill(username);

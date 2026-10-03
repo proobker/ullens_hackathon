@@ -51,6 +51,9 @@ export const RegisterPatientSchema = z.object({
   bloodGroup: z.enum(BloodGroups).optional(), allergies: z.string().trim().min(1).max(500).optional(),
   tagUid: ScanSchema.shape.tagUid.optional(),
   username: z.string().regex(/^[a-z0-9_-]{3,32}$/), password: z.string().min(12).max(128),
+  photo: z.string().max(700_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/),
+  descriptor: z.array(z.number().finite()).length(128),
 }).strict();
 export type RegisterPatientRequest = z.input<typeof RegisterPatientSchema>;
 export type RegisteredPatient = { patientId: string; name: string; locator: string; username: string };
+export type FaceGalleryEntry = { patientId: string; name: string; descriptor: number[] };
