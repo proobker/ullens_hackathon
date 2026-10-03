@@ -67,7 +67,7 @@ export function derivePrescriptionView(record: MedicationRecord, events: Medicat
       const time = effectiveTime(event);
       return time !== null && time <= asOfTime;
     })
-    .sort((left, right) => left.revision - right.revision);
+    .sort((left, right) => effectiveTime(left)! - effectiveTime(right)!);
 
   let state: PrescriptionView['state'] = 'unknown';
   let basis = 'No explicit current-status evidence is recorded.';
@@ -101,6 +101,18 @@ export function derivePrescriptionView(record: MedicationRecord, events: Medicat
         basis = `The latest authorised event records the prescription as ${latest.kind}.`;
         break;
     }
+  }
+
+  if (latest) {
+    const simultaneous = streamEvents.filter(event => effectiveTime(event) === effectiveTime(latest));
+    const instructions = new Set(simultaneous.map(event => event.kind === 'status_confirmed' ? event.confirmedState : event.kind === 'started' || event.kind === 'resumed' ? 'documented_active' : event.kind));
+    if (instructions.size > 1) {
+      state = 'conflict'; basis = 'Incompatible effective instructions have no reliable order.';
+      basisEventIds = simultaneous.map(event => event.id);
+    }
+  }
+  if (endDate && endDate < asOf.slice(0,10) && state === 'documented_active') {
+    state = 'course_end_passed'; basis = 'Documented end date bounds this prescription; actual use is unknown.';
   }
 
   return {
