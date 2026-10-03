@@ -125,6 +125,9 @@ export function seedDatabase(database: DatabaseSync, fixtureDirectory: string): 
   };
 
   withTransaction(database, () => {
+    for (const table of ['platform_requests','platform_receipts','portal_roles','platform_objects']) {
+      if(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table)) database.exec('DELETE FROM '+table);
+    }
     for (const table of ['sessions', 'medication_events', 'medications', 'claims', 'documents', 'actor_patient_bindings', 'actors', 'patients']) {
       database.exec(`DELETE FROM ${table}`);
     }

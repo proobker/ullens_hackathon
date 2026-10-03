@@ -3,6 +3,7 @@ import { randomUUID, sign } from 'node:crypto';
 import { z } from 'zod';
 import { CardSchema, DispatchRequestSchema, EntrySchema, GrantRequestSchema, PlatformProfileSchema, ReleaseRequestSchema, ScanSchema, SignRequestSchema, type Alert } from '@pran-rekha/contracts/platform';
 import { canonical, digest, freshness, NOTICE, PlatformStore, sixMonths, type Profile, type Staff } from './store.js';
+import { intakeRouter } from './intake.js';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
 type Linkage = {id:string;actor:string;patient:string;expiresAt:string};
 type Reader = {id:string;tokenHash:string;revoked:boolean;lastSeen:string|null};
@@ -12,6 +13,9 @@ const unavailable=()=>{throw new Error('FORBIDDEN');};
 
 export function platformRouter(store:PlatformStore,clock:()=>Date) {
   const router=Router();
+  // Alert changes wake SSE subscribers; payloads stay out of the stream.
+  const listeners=new Set<()=>void>();
+  const notify=()=>{for(const listener of listeners)listener();};
   function profile(id:string):Profile { const p=store.get<Profile>('profile',id); if(!p) return unavailable(); return p; }
   function owner(actor:string,pid:string) {
     return Boolean(store.db.prepare('SELECT 1 FROM actor_patient_bindings WHERE actor_id=? AND patient_id=?').get(actor,pid));
@@ -54,6 +58,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
     res.locals.staff=store.staff(actor.id)??{id:actor.id,role:'patient',facility:'',unit:'',reader:''};
     next();
   });
+  router.use(intakeRouter(store,clock));
   router.get('/context',(_req,res)=>{
     const s=res.locals.staff as Staff;
     res.json({staff:s,patients:store.all<Profile>('profile').filter(p=>allowedFull(s,p.id)).map(p=>({id:p.id,name:p.name})),destinations:[{id:'hospital-demo',name:'Pran Rekha Demonstration Hospital'}]});
@@ -159,7 +164,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const result=store.mutate(s.id,input.requestId,input,()=>{
         const alert:Alert={id:randomUUID(),patientId:g.patient,destination:input.destination,unit:s.unit,etaMinutes:input.etaMinutes,timestamp:clock().toISOString(),status:'EN_ROUTE',revision:1,card:project(g.patient,s.id,'Dispatch: '+g.purpose,g.expiresAt)};
         store.put('alert',alert.id,alert);return {id:alert.id};
-      });res.json(result);
+      });notify();res.json(result);
     }catch(e){next(e);}
   });
   router.post('/alerts/read',(_req,res,next)=>{
@@ -177,7 +182,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         const a=store.get<Alert>('alert',id);if(!a||a.destination!==s.facility||s.role!=='clinician')return unavailable();
         if(a.revision!==input.expectedRevision||!(a.status==='EN_ROUTE'&&input.status==='ARRIVED'||a.status==='ARRIVED'&&input.status==='RESOLVED'))throw new Error('CONFLICT');
         a.status=input.status;a.revision++;store.put('alert',id,a);return {id,status:a.status,revision:a.revision};
-      }));
+      }));notify();
     }catch(e){next(e);}
   });
   router.get('/events',(req,res)=>{
@@ -185,10 +190,12 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
     if(s.facility!=='hospital-demo'&&s.role!=='paramedic'){res.status(403).end();return;}
     res.setHeader('Content-Type','text/event-stream');res.setHeader('Connection','keep-alive');res.flushHeaders();
     // Notifications contain no patient data. Clients refetch via audited endpoints.
-    res.write('event: refresh\ndata: {}\n\n');
-    const interval=setInterval(()=>res.write('event: refresh\ndata: {}\n\n'),5000);
-    const expiry=setTimeout(()=>res.end(),60000);
-    req.on('close',()=>{clearInterval(interval);clearTimeout(expiry);});
+    const push=()=>res.write('event: refresh\ndata: {}\n\n');
+    push();listeners.add(push);
+    const heartbeat=setInterval(()=>res.write(': ping\n\n'),15000);
+    // Bounded stream; EventSource reconnects and re-authenticates.
+    const expiry=setTimeout(()=>res.end(),300000);
+    req.on('close',()=>{listeners.delete(push);clearInterval(heartbeat);clearTimeout(expiry);});
   });
   router.post('/profiles/:id/book',(req,res,next)=>{
     try{const s=res.locals.staff as Staff,pid=String(req.params.id),input=z.object({requestId:text,date:z.iso.date()}).strict().parse(req.body);if(!owner(s.id,pid))return unavailable();

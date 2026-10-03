@@ -56,7 +56,7 @@ export function createApp(options: AppOptions) {
   const secureCookies = options.secureCookies ?? process.env.NODE_ENV === 'production';
 
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '128kb' }));
+  app.use(express.json({ limit: '15mb' }));
   app.use((request, response, next) => {
     response.locals.requestId = request.header('x-request-id')?.slice(0, 128) || randomUUID();
     response.setHeader('Cache-Control', 'no-store');

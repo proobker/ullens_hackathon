@@ -8,4 +8,4 @@ coverage/
 *.tsbuildinfo
 firmware/**/secrets.h
 firmware/**/.pio/
-
+conv/
