@@ -10,11 +10,11 @@ import { api, labels, requestId, usePreferences } from './client';
 import { browserDeviceId, prepareBrowserShell, prepare, syncReceipts, unlock } from './offline';
 import { BreakGlass, RecordWorkflows } from './Workflows';
 import { FaceLookup } from './FaceLookup';
+import { RegisterPatient } from './RegisterPatient';
 
 type PortalName='patient'|'paramedic'|'hospital'|'lab';
 type Context={staff:{role:string;facility:string;unit:string;reader:string};patients:{id:string;name:string}[]};
 const routes=[['patient',UserRound],['paramedic',Radio],['hospital',Hospital],['lab',FlaskConical]] as const;
-const patientId='PR-9042-8819';
 const demoLocator='demo-opaque-93e74fd4-54c5-45cf-9760-54d64f20e347';
 const traumaCategories=['Unconscious polytrauma','Road traffic collision','Cardiac event','Respiratory distress','Burns','Fall from height','Other'];
 const signableKinds:Entry['kind'][]=['vital','medication','allergy','condition','implant','blood_group'];
@@ -43,15 +43,18 @@ export default function Portal({portal}:{portal:PortalName}) {
   const [report,setReport]=useState(''),[source,setSource]=useState<Entry|null>(null);
   const [signKind,setSignKind]=useState<Entry['kind']>('vital'),[clinicalText,setClinicalText]=useState('Blood pressure 118/78 mmHg'),[signSource,setSignSource]=useState('Demo clinician attestation');
   const [face,setFace]=useState(false),[faceConsent,setFaceConsent]=useState(false);
+  const [registered,setRegistered]=useState<{id:string;name:string}[]>([]);
   const [sound,setSound]=useState(false),[fresh,setFresh]=useState<string[]>([]);
   const seenAlerts=useRef<Set<string>|null>(null),soundRef=useRef(false);
   soundRef.current=sound;
 
   async function refresh() {
     const c=await api<Context>('platform/context');setContext(c);
-    if(c.patients.some(p=>p.id===patientId)){
-      const p=await api<PlatformProfile>('platform/profiles/'+patientId);setProfile(p);setAllowed(p.release.allowedEntryIds);
-      if(c.staff.role==='patient')setReceipts(await api('platform/profiles/'+patientId+'/receipts'));
+    // Patients see their own bound record; the lab sees its assigned one.
+    const pid=c.patients[0]?.id;
+    if(pid){
+      const p=await api<PlatformProfile>('platform/profiles/'+pid);setProfile(p);setAllowed(p.release.allowedEntryIds);
+      if(c.staff.role==='patient')setReceipts(await api('platform/profiles/'+pid+'/receipts'));
     }
     if(c.staff.facility==='hospital-demo'){
       const next=(await api<(Alert&{unavailable?:boolean})[]>('platform/alerts/read',{})).filter(a=>!a.unavailable);
@@ -92,7 +95,7 @@ export default function Portal({portal}:{portal:PortalName}) {
   async function login(){const s=await api<SessionResponse>('session',{username,password});setSession(s);await refresh();}
   async function signOut(){
     await api('session',undefined,'DELETE');
-    setSession(null);setContext(null);setProfile(null);setAlerts([]);setCard(null);setOfflineCard(null);setFace(false);setFaceConsent(false);setSource(null);setLink(null);setGrantId('');
+    setSession(null);setContext(null);setProfile(null);setAlerts([]);setCard(null);setOfflineCard(null);setFace(false);setFaceConsent(false);setSource(null);setLink(null);setGrantId('');setRegistered([]);
     seenAlerts.current=null;
   }
   async function resolveLocator(value:string){setLink(await api('platform/linkage',{locator:value}));setConfirmed(false);setCard(null);setGrantId('');}
@@ -138,13 +141,13 @@ export default function Portal({portal}:{portal:PortalName}) {
           <p>{daysLeft>0?daysLeft+' days until review':'Review overdue'} · {new Date(profile.reviewDue).toLocaleDateString(language==='ne'?'ne-NP':'en-GB')}</p>
           <p>Review schedule; current health and medication use require separate assessment.</p>
           <p className="offer">$50 checkup · 15% Pran Rekha partner discount → $42.50 (simulated)</p>
-          <button className="primary" onClick={()=>void run(async()=>{await api('platform/profiles/'+patientId+'/book',{requestId:requestId(),date:new Date().toISOString().slice(0,10)});setMessage('Simulated appointment booked for $42.50. No payment was taken.');})}>{t.booking}</button></section>
+          <button className="primary" onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/book',{requestId:requestId(),date:new Date().toISOString().slice(0,10)});setMessage('Simulated appointment booked for $42.50. No payment was taken.');})}>{t.booking}</button></section>
         <section className="surface wide"><h2>{t.records}</h2><div className="entries">{renderEntries(profile.entries)}</div></section>
         <section className="surface"><h2>{t.release}</h2><p>Select each entry and its excerpt for emergency sharing.</p>{profile.entries.map(e=><label className="check" key={e.id}><input type="checkbox" checked={allowed.includes(e.id)} onChange={event=>setAllowed(event.target.checked?[...allowed,e.id]:allowed.filter(id=>id!==e.id))}/>{e.text}</label>)}
-          <button className="primary" onClick={()=>void run(async()=>{await api('platform/profiles/'+patientId+'/release',{requestId:requestId(),expectedRevision:profile.revision,allowedEntryIds:allowed});await refresh();setMessage('Emergency release updated.');})}>{t.save}</button>
-          <button onClick={()=>void run(async()=>{await api('platform/profiles/'+patientId+'/revoke',{requestId:requestId(),expectedRevision:profile.revision});await refresh();})}>{t.revoke}</button>
+          <button className="primary" onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/release',{requestId:requestId(),expectedRevision:profile.revision,allowedEntryIds:allowed});await refresh();setMessage('Emergency release updated.');})}>{t.save}</button>
+          <button onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/revoke',{requestId:requestId(),expectedRevision:profile.revision});await refresh();})}>{t.revoke}</button>
           <p>{profile.release.revoked?'Revoked':'Active'} · revision {profile.release.revision}</p></section>
-        <section className="surface"><h2>{t.report}</h2><textarea value={report} onChange={e=>setReport(e.target.value)} aria-label="Patient report"/><button disabled={!report.trim()} onClick={()=>void run(async()=>{await api('platform/profiles/'+patientId+'/reports',{requestId:requestId(),expectedRevision:profile.revision,text:report,date:new Date().toISOString().slice(0,10)});setReport('');await refresh();})}>{t.report}</button><p>Attributed to you. This does not change a clinician-signed record.</p></section>
+        <section className="surface"><h2>{t.report}</h2><textarea value={report} onChange={e=>setReport(e.target.value)} aria-label="Patient report"/><button disabled={!report.trim()} onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/reports',{requestId:requestId(),expectedRevision:profile.revision,text:report,date:new Date().toISOString().slice(0,10)});setReport('');await refresh();})}>{t.report}</button><p>Attributed to you. This does not change a clinician-signed record.</p></section>
         <section className="surface wide"><h2>{t.receipts}</h2><button onClick={()=>void run(refresh)}>{t.refresh}</button>{receipts.length?<ul className="receipts">{receipts.map(r=><li key={String(r.id)}>{String(r.at)} · {String(r.actorId)} · {String(r.purpose)}</li>)}</ul>:<p>No access receipts yet.</p>}</section>
       </div>}
 
@@ -153,7 +156,7 @@ export default function Portal({portal}:{portal:PortalName}) {
           <label>Record type<select value={signKind} onChange={e=>setSignKind(e.target.value as Entry['kind'])}>{signableKinds.map(k=><option key={k} value={k}>{k.replace('_',' ')}</option>)}</select></label>
           <label>Verbatim observation, result or medication<textarea value={clinicalText} onChange={e=>setClinicalText(e.target.value)}/></label>
           <label>Source<input value={signSource} onChange={e=>setSignSource(e.target.value)}/></label>
-          <button className="primary" disabled={!clinicalText.trim()||!signSource.trim()} onClick={()=>void run(async()=>{await api('platform/profiles/'+patientId+'/sign',{requestId:requestId(),expectedRevision:profile.revision,entries:[{kind:signKind,text:clinicalText,excerpt:clinicalText,date:new Date().toISOString().slice(0,10),source:signSource}]});await refresh();setMessage('Signed version committed. Patient approval is required for emergency sharing.');})}>Sign &amp; commit to Pran Rekha</button>
+          <button className="primary" disabled={!clinicalText.trim()||!signSource.trim()} onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/sign',{requestId:requestId(),expectedRevision:profile.revision,entries:[{kind:signKind,text:clinicalText,excerpt:clinicalText,date:new Date().toISOString().slice(0,10),source:signSource}]});await refresh();setMessage('Signed version committed. Patient approval is required for emergency sharing.');})}>Sign &amp; commit to Pran Rekha</button>
           <p>Ed25519 demo signature · integrity verified on every read. Demonstrates record integrity, not accreditation.</p></section>
         <section className="surface"><h2>Simulated revenue ledger</h2>{ledger.length?<ul className="receipts">{ledger.map(l=><li key={String(l.id)}>Checkup ${(Number(l.amountMinor)/100).toFixed(2)} · take-rate (8%) ${(Number(l.commissionMinor)/100).toFixed(2)}</li>)}</ul>:<p>No checkups signed yet.</p>}
           <p><strong>Total commission: ${(ledger.reduce((sum,l)=>sum+Number(l.commissionMinor),0)/100).toFixed(2)}</strong></p><p>Illustrative only. No payments are processed.</p></section>
@@ -178,7 +181,8 @@ export default function Portal({portal}:{portal:PortalName}) {
         {card&&<section className="surface wide"><h2>{card.name}</h2>{warnings(card)}<p>{card.notice}</p><div className="entries">{renderEntries(card.entries)}</div></section>}
       </div>}
 
-      {portal==='hospital'&&<FaceLookup/>}
+      {portal==='hospital'&&<RegisterPatient onRegistered={p=>setRegistered(r=>[...r,p])}/>}
+      {portal==='hospital'&&<FaceLookup patients={registered}/>}
       {portal==='hospital'&&<section className="surface board">
         <div className="board-heading"><h2>Incoming patients</h2><div className="header-right">
           <button aria-pressed={sound} onClick={()=>setSound(!sound)}>{sound?<Bell size={16}/>:<BellOff size={16}/>} {sound?'Sound on':'Sound off'}</button>
@@ -197,7 +201,7 @@ export default function Portal({portal}:{portal:PortalName}) {
       </>}
 
       {portal==='patient'&&<section className="surface offline-panel"><h2>Prepared offline viewer</h2><label>Unlock phrase (12+ characters)<input type="password" value={phrase} onChange={e=>setPhrase(e.target.value)}/></label>
-        {session&&profile&&<button onClick={()=>void run(async()=>{await prepareBrowserShell();await prepare(await api('platform/profiles/'+patientId+'/snapshot',{deviceId:await browserDeviceId()}),phrase);setPhrase('');setMessage('Encrypted snapshot prepared on this browser.');})}>{t.offline}</button>}
+        {session&&profile&&<button onClick={()=>void run(async()=>{await prepareBrowserShell();await prepare(await api('platform/profiles/'+profile.id+'/snapshot',{deviceId:await browserDeviceId()}),phrase);setPhrase('');setMessage('Encrypted snapshot prepared on this browser.');})}>{t.offline}</button>}
         <button onClick={()=>void run(async()=>{const snap=await unlock(phrase);setOfflineCard(snap.card);setPhrase('');if(session&&navigator.onLine)await flushOfflineReceipts().catch(()=>{});})}>Unlock saved snapshot</button>
         {offlineCard&&<><p>Offline snapshot from {offlineCard.generatedAt}; later changes and revocations may be unavailable.</p><p>{offlineCard.notice}</p><div className="entries">{renderEntries(offlineCard.entries)}</div></>}
       </section>}

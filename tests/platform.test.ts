@@ -117,6 +117,33 @@ describe('combined platform',()=>{
     const p=store.get<Profile>('profile',pid)!;p.versions[0]!.entries[0]!.text='tampered';store.put('profile',pid,p);
     const patient=await actor('siddharth');expect((await patient.get(base+'/profiles/'+pid)).body.error.code).toBe('SIGNATURE_INVALID');
   });
+  it('hospital registers a patient with a signed record, login and locator; release starts empty',async()=>{
+    const hospital=await actor('hospital');
+    const body={requestId:'reg-1',name:'Asha Gurung',dob:'1990-01-15',bloodGroup:'B+',allergies:'Latex — rash recorded',tagUid:'cafe1234',username:'asha',password:'synthetic-pass-1'};
+    const reg=await hospital.post(base+'/patients').send(body);
+    expect(reg.status).toBe(200);expect(reg.body).toEqual({patientId:expect.stringMatching(/^PR-\d{4}-\d{4}$/),name:'Asha Gurung',locator:expect.stringMatching(/^opaque-/),username:'asha'});
+    expect(JSON.stringify(reg.body)).not.toContain('synthetic-pass-1');
+    expect((await hospital.post(base+'/patients').send(body)).body).toEqual(reg.body);
+    const patient=request.agent(app);expect((await patient.post('/api/session').send({username:'asha',password:'synthetic-pass-1'})).status).toBe(201);
+    expect((await patient.get(base+'/context')).body.patients).toEqual([{id:reg.body.patientId,name:'Asha Gurung'}]);
+    const profile=await patient.get(base+'/profiles/'+reg.body.patientId);
+    expect(profile.status).toBe(200);expect(profile.body.entries.map((e:{kind:string;text:string})=>e.kind+':'+e.text)).toEqual(['blood_group:B+','allergy:Latex — rash recorded']);
+    expect(profile.body.release.allowedEntryIds).toEqual([]);expect(store.get('tag','CAFE1234')).toEqual({patientId:reg.body.patientId,revoked:false});
+    const medic=await actor('paramedic');
+    const link=await medic.post(base+'/linkage').send({locator:reg.body.locator});expect(link.body.patientId).toBe(reg.body.patientId);
+    const grant=await medic.post(base+'/grants').send({requestId:'g-reg',...link.body,deviceId:'test',purpose:'Emergency demonstration',confirmed:true});
+    expect((await medic.post(base+'/cards').send({grantId:grant.body.id})).body.entries).toEqual([]);
+  });
+  it('limits registration to hospital staff and rejects duplicate usernames or tags',async()=>{
+    const body=(n:string,extra={})=>({requestId:'reg-'+n,name:'Synthetic '+n,dob:'1990-01-15',username:'user'+n,password:'synthetic-pass-1',...extra});
+    for(const name of ['paramedic','lab','siddharth'])expect((await (await actor(name)).post(base+'/patients').send(body(name))).status).toBe(404);
+    const hospital=await actor('hospital');
+    expect((await hospital.post(base+'/patients').send(body('a',{username:'siddharth'}))).status).toBe(409);
+    expect((await hospital.post(base+'/patients').send(body('b',{tagUid:'DEADBEEF'}))).status).toBe(409);
+    expect((await hospital.post(base+'/patients').send(body('c',{password:'short'}))).status).toBe(400);
+    const plain=await hospital.post(base+'/patients').send(body('d'));expect(plain.status).toBe(200);
+    expect(store.verifyProfile(store.get<Profile>('profile',plain.body.patientId)!)).toBe(true);
+  });
   it('rejects cross-origin mutations and preserves calendar month boundaries',async()=>{
     expect((await request(app).post('/api/session').set('Origin','https://attacker.test').send({username:'lab',password:'pran-demo-lab'})).status).toBe(403);
     expect(sixMonths(new Date('2026-08-31T00:00:00Z')).toISOString()).toBe('2027-02-28T00:00:00.000Z');

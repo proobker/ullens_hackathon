@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { randomUUID, sign } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID, sign } from 'node:crypto';
 import { z } from 'zod';
-import { CardSchema, DispatchRequestSchema, EntrySchema, GrantRequestSchema, PlatformProfileSchema, ReleaseRequestSchema, ScanSchema, SignRequestSchema, type Alert } from '@pran-rekha/contracts/platform';
+import { CardSchema, DispatchRequestSchema, EntrySchema, GrantRequestSchema, PlatformProfileSchema, RegisterPatientSchema, ReleaseRequestSchema, ScanSchema, SignRequestSchema, type Alert } from '@pran-rekha/contracts/platform';
 import { canonical, digest, freshness, NOTICE, PlatformStore, sixMonths, type Profile, type Staff } from './store.js';
+import { hashPassword } from '../storage/seed.js';
 import { intakeRouter } from './intake.js';
 import { operationsRouter } from './operations.js';
 import { medicationsRouter } from './medications.js';
@@ -127,6 +128,35 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
   router.get('/profiles/:id/receipts',(req,res,next)=>{
     try{const s=res.locals.staff as Staff,pid=String(req.params.id);if(!owner(s.id,pid))return unavailable();
       res.json((store.db.prepare('SELECT body FROM platform_receipts WHERE patient_id=? ORDER BY rowid DESC').all(pid) as {body:string}[]).map(r=>JSON.parse(r.body)));
+    }catch(e){next(e);}
+  });
+  // Hospital registration creates a synthetic record and a patient login; emergency release starts empty until the patient opts in.
+  router.post('/patients',(req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff;
+      if(s.role!=='clinician'||s.facility!=='hospital-demo')return unavailable();
+      const input=RegisterPatientSchema.parse(req.body);
+      res.json(store.mutate(s.id,input.requestId,{...input,password:digest(input.password)},()=>{
+        const actorId='portal-'+input.username;
+        if(store.db.prepare('SELECT 1 FROM actors WHERE id=? OR username=?').get(actorId,input.username))throw new Error('CONFLICT');
+        if(input.tagUid&&store.get('tag',input.tagUid))throw new Error('CONFLICT');
+        let pid:string;
+        do pid='PR-'+randomInt(1000,10000)+'-'+randomInt(1000,10000); while(store.get('profile',pid));
+        const salt=randomBytes(16).toString('hex'),date=clock().toISOString().slice(0,10);
+        store.db.prepare('INSERT INTO patients VALUES(?,?,?,?)').run(pid,input.name,null,'synthetic_fixture');
+        store.db.prepare('INSERT INTO actors VALUES(?,?,?,?,?,?)').run(actorId,input.username,input.name,'patient',salt,hashPassword(input.password,salt));
+        store.db.prepare('INSERT INTO portal_roles VALUES(?,?,?,?,?)').run(actorId,'patient','','','');
+        store.db.prepare('INSERT INTO actor_patient_bindings VALUES(?,?)').run(actorId,pid);
+        const source='Pran Rekha Demonstration Hospital · registration';
+        const entries=([['blood_group',input.bloodGroup],['allergy',input.allergies]] as const).filter(([,text])=>text).map(([kind,text])=>EntrySchema.parse({id:randomUUID(),kind,text,date,source,excerpt:text,author:s.id,reviewed:true}));
+        const reviewDue=sixMonths(clock()).toISOString();
+        const versions=entries.length?[store.signVersion({id:randomUUID(),patientId:pid,revision:1,facility:s.facility,signer:s.id,signedAt:clock().toISOString(),reviewDue,entries})]:[];
+        const locator='opaque-'+randomUUID();
+        store.put('profile',pid,{id:pid,name:input.name,dob:input.dob,locator,revision:1,entries,versions,reviewDue,release:{revision:1,allowedEntryIds:[],revoked:false}} satisfies Profile);
+        if(input.tagUid)store.put('tag',input.tagUid,{patientId:pid,revoked:false});
+        store.receipt(pid,s.id,'Hospital patient registration',[],clock());
+        return {patientId:pid,name:input.name,locator,username:input.username};
+      }));
     }catch(e){next(e);}
   });
   router.post('/linkage',(req,res,next)=>{

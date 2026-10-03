@@ -3,13 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, ScanFace, Trash2, Upload } from 'lucide-react';
 import { describe, FaceInputError, loadModels, match, MAX_ENROLLED, type Enrolled, type FaceResult } from './face';
 
-const demoPatients=['PR-9042-8819'];
+const demoPatient={id:'PR-9042-8819',name:'Siddharth Raj Sharma'};
 type Mode='identify'|'enroll';
 
 // Hospital face candidate aid: session-local gallery, candidate handles only, record stays locked.
-export function FaceLookup(){
+export function FaceLookup({patients=[]}:{patients?:{id:string;name:string}[]}){
   const [consent,setConsent]=useState(false),[mode,setMode]=useState<Mode>('identify');
-  const [gallery,setGallery]=useState<Enrolled[]>([]),[label,setLabel]=useState('Demo participant A'),[patientId,setPatientId]=useState(demoPatients[0]!);
+  const [gallery,setGallery]=useState<Enrolled[]>([]),[label,setLabel]=useState('Demo participant A'),[patientId,setPatientId]=useState(demoPatient.id);
   const [preview,setPreview]=useState(''),[camera,setCamera]=useState(false),[busy,setBusy]=useState(false);
   const [modelState,setModelState]=useState<'idle'|'ready'|'unavailable'>('idle');
   const [result,setResult]=useState<FaceResult|null>(null),[error,setError]=useState(''),[message,setMessage]=useState('');
@@ -26,6 +26,9 @@ export function FaceLookup(){
     window.addEventListener('pagehide',onHide);
     return()=>{window.removeEventListener('pagehide',onHide);stream.current?.getTracks().forEach(t=>t.stop());if(previewRef.current)URL.revokeObjectURL(previewRef.current);};
   },[]);
+  // A newly registered patient becomes the enrollment target.
+  const latest=patients.at(-1);
+  useEffect(()=>{if(latest){setPatientId(latest.id);setLabel(latest.name);}},[latest?.id]);
   useEffect(()=>{
     if(!consent){clearAll();return;}
     void loadModels().then(()=>setModelState('ready'),()=>setModelState('unavailable'));
@@ -90,7 +93,7 @@ export function FaceLookup(){
 
     {mode==='enroll'&&<div className="face-enroll">
       <label>Participant label<input value={label} onChange={e=>setLabel(e.target.value)}/></label>
-      <label>Synthetic patient<select value={patientId} onChange={e=>setPatientId(e.target.value)}>{demoPatients.map(p=><option key={p}>{p}</option>)}</select></label>
+      <label>Synthetic patient<select value={patientId} onChange={e=>setPatientId(e.target.value)}>{[demoPatient,...patients].map(p=><option key={p.id} value={p.id}>{p.name} · {p.id}</option>)}</select></label>
     </div>}
 
     <div className="face-inputs">

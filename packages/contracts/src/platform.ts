@@ -45,3 +45,12 @@ export const PlatformProfileSchema = z.object({
   reviewDue: z.iso.datetime(), freshness: z.enum(['FRESH', 'AGING', 'EXPIRED']),
 }).strict();
 export type PlatformProfile = z.infer<typeof PlatformProfileSchema>;
+export const BloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+export const RegisterPatientSchema = z.object({
+  requestId: id, name: z.string().trim().min(1).max(120), dob: z.iso.date(),
+  bloodGroup: z.enum(BloodGroups).optional(), allergies: z.string().trim().min(1).max(500).optional(),
+  tagUid: ScanSchema.shape.tagUid.optional(),
+  username: z.string().regex(/^[a-z0-9_-]{3,32}$/), password: z.string().min(12).max(128),
+}).strict();
+export type RegisterPatientRequest = z.input<typeof RegisterPatientSchema>;
+export type RegisteredPatient = { patientId: string; name: string; locator: string; username: string };

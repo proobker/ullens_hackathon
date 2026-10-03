@@ -38,7 +38,7 @@ export function loadModels():Promise<FaceApi>{
 
 export async function describe(source:FaceSource):Promise<Float32Array>{
   const faceapi=await loadModels();
-  const faces=await faceapi.detectAllFaces(source,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.5})).withFaceLandmarks().withFaceDescriptors();
+  const faces=await faceapi.detectAllFaces(source,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.3})).withFaceLandmarks().withFaceDescriptors();
   if(!faces.length)throw new FaceInputError('No face found. Use a clear, front-facing image.');
   if(faces.length>1)throw new FaceInputError('More than one face found. Use an image with exactly one person.');
   return faces[0]!.descriptor;
