@@ -9,8 +9,11 @@ import { operationsRouter } from './operations.js';
 import { medicationsRouter } from './medications.js';
 import { lifecycle, type LifecycleEvent } from '@pran-rekha/domain';
 import type { MedicationRecord } from '@pran-rekha/contracts';
+import { FaceEnrollmentSchema } from '@pran-rekha/contracts/platform';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
-type Linkage = {id:string;actor:string;patient:string;expiresAt:string};
+type Linkage = {id:string;actor:string;patient:string;expiresAt:string;rfid?:{deviceId:string;eventId:string}};
+type Scan = {deviceId:string;tagUid:string;eventId:string;receivedAt:string};
+type ReaderDisplay = {grantId:string;expiresAt:string};
 type Face = {patientId:string;descriptor:number[];photo:string;photoSha256:string;createdBy:string;createdAt:string};
 type HandwrittenSource = {id:string;patientId:string;image:string;sha256:string;ocrText:string;engine:string;actorId:string;at:string};
 type Reader = {id:string;tokenHash:string;revoked:boolean;lastSeen:string|null};
@@ -43,7 +46,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       return {...entry,text:entry.text+' · '+view.state+' · actual use not established'};
     });
     const receiptId=store.receipt(pid,actor,purpose,entries.map(e=>e.id),clock());
-    return CardSchema.parse({patientId:pid,name:p.name,entries,notice:NOTICE,generatedAt:clock().toISOString(),expiresAt,receiptId});
+    return CardSchema.parse({...(p.demo?{demo:true}:{}),patientId:pid,name:p.name,entries,notice:(p.demo?'FICTIONAL DEMO DATA - not medical history. ':'')+NOTICE,generatedAt:clock().toISOString(),expiresAt,receiptId});
   }
   function grant(id:string,actor:string,sessionHash:string) {
     const g=store.get<Grant>('grant',id);
@@ -70,9 +73,46 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const result=store.mutate('device:'+reader.id,input.eventId,input,()=>{
         reader.lastSeen=clock().toISOString();store.put('reader',reader.id,reader);
         store.put('scan',input.eventId,{...input,receivedAt:reader.lastSeen});
+        store.put('reader-scan',reader.id,{eventId:input.eventId});
         return {accepted:true,eventId:input.eventId};
       });
       res.json(result);
+    }catch(e){next(e);}
+  });
+  // Medical details require approval. Explicitly enrolled demo cards may show
+  // their name on the designated reader while waiting for approval.
+  router.get('/rfid/display',(req,res,next)=>{
+    try {
+      const input=z.object({deviceId:ScanSchema.shape.deviceId,eventId:ScanSchema.shape.eventId.optional()}).strict().parse(req.query);
+      const reader=store.get<Reader>('reader',input.deviceId);
+      if(!reader||reader.revoked||digest(req.header('authorization')?.replace(/^Bearer /,'')??'')!==reader.tokenHash)return unavailable();
+      reader.lastSeen=clock().toISOString();store.put('reader',reader.id,reader);
+      if(!input.eventId){res.json({state:'READY'});return;}
+      const scan=store.get<Scan>('scan',input.eventId);
+      const latest=store.get<{eventId:string}>('reader-scan',reader.id);
+      if(!scan||scan.deviceId!==reader.id||latest?.eventId!==scan.eventId||Date.parse(scan.receivedAt)<=clock().getTime()-240000){res.json({state:'EXPIRED'});return;}
+      const tag=store.get<{patientId:string;revoked:boolean}>('tag',scan.tagUid);
+      if(!tag||tag.revoked){res.json({state:'UNKNOWN_TAG'});return;}
+      const display=store.get<ReaderDisplay>('reader-display',reader.id+':'+scan.eventId);
+      if(!display){
+        if(Date.parse(scan.receivedAt)<=clock().getTime()-120000){res.json({state:'EXPIRED'});return;}
+        const enrollment=store.get<{patientId:string;deviceId:string}>('demo-name-display',scan.tagUid);
+        const candidate=store.get<Profile>('profile',tag.patientId);
+        if(enrollment?.patientId===tag.patientId&&enrollment.deviceId===reader.id&&candidate?.demo&&!candidate.release.revoked){
+          if(!store.verifyProfile(candidate))throw new Error('SIGNATURE_INVALID');
+          res.json({state:'WAITING_APPROVAL',name:candidate.name,demo:true});return;
+        }
+        res.json({state:'WAITING_APPROVAL'});return;
+      }
+      const g=store.get<Grant>('grant',display.grantId);
+      const binding=g&&store.get<{sessionHash:string}>('grant-session',g.id);
+      const p=store.get<Profile>('profile',tag.patientId);
+      if(!g||!p||g.patient!==tag.patientId||store.staff(g.actor)?.reader!==reader.id||!binding
+        ||!store.db.prepare('SELECT 1 FROM sessions WHERE token_hash=? AND actor_id=? AND expires_at>?').get(binding.sessionHash,g.actor,clock().toISOString())
+        ||Date.parse(display.expiresAt)<=clock().getTime()||Date.parse(g.expiresAt)<=clock().getTime()
+        ||p.release.revoked||p.release.revision!==g.releaseRevision){res.json({state:'EXPIRED'});return;}
+      const card=store.transaction(()=>project(g.patient,g.actor,'RFID LCD: '+g.purpose,display.expiresAt));
+      res.json({state:'AUTHORIZED',expiresAt:display.expiresAt,card});
     }catch(e){next(e);}
   });
   router.use((req,res,next)=>{
@@ -170,7 +210,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const s=res.locals.staff as Staff;
       if(!hospitalStaff(s))return unavailable();
       const input=RegisterPatientSchema.parse(req.body);
-      if(jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
+      if(input.photo&&jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
       res.json(store.mutate(s.id,input.requestId,{...input,password:digest(input.password)},()=>{
         const actorId='portal-'+input.username;
         if(store.db.prepare('SELECT 1 FROM actors WHERE id=? OR username=?').get(actorId,input.username))throw new Error('CONFLICT');
@@ -192,9 +232,23 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         // The registering clinician may update this patient's record (e.g. handwritten notes).
         store.put('assignment','hospital:'+pid,{actor:s.id,patient:pid});
         // Demo deviation from the session-only face rule: photo and descriptor persist in the demo database (hospital-only).
-        store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
+        if(input.photo&&input.descriptor)store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
         store.receipt(pid,s.id,'Hospital patient registration',[],clock());
         return {patientId:pid,name:input.name,locator,username:input.username};
+      }));
+    }catch(e){next(e);}
+  });
+  router.post('/profiles/:id/face',(req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff,pid=String(req.params.id);
+      if(!hospitalStaff(s)||!allowedFull(s,pid))return unavailable();
+      const input=FaceEnrollmentSchema.parse(req.body);
+      if(jpegBytes(input.photo).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
+      profile(pid);
+      res.json(store.mutate(s.id,input.requestId,{pid,...input},()=>{
+        store.put('face',pid,{patientId:pid,photo:input.photo,descriptor:input.descriptor,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
+        store.receipt(pid,s.id,'Face enrollment updated',[],clock());
+        return {patientId:pid,updated:true};
       }));
     }catch(e){next(e);}
   });
@@ -227,10 +281,11 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const s=res.locals.staff as Staff;if(!s.reader)return unavailable();
       const reader=store.get<Reader>('reader',s.reader);if(!reader||reader.revoked)return unavailable();
       const scans=store.all<{deviceId:string;tagUid:string;eventId:string;receivedAt:string}>('scan').filter(e=>e.deviceId===s.reader&&Date.parse(e.receivedAt)>clock().getTime()-120000).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
-      const scan=scans[0];if(!scan){res.json({state:reader.lastSeen&&Date.parse(reader.lastSeen)>clock().getTime()-60000?'READY':'DISCONNECTED'});return;}
+      const latest=store.get<{eventId:string}>('reader-scan',s.reader);
+      const scan=latest?scans.find(e=>e.eventId===latest.eventId):scans[0];if(!scan){res.json({state:reader.lastSeen&&Date.parse(reader.lastSeen)>clock().getTime()-60000?'READY':'DISCONNECTED'});return;}
       const tag=store.get<{patientId:string;revoked:boolean}>('tag',scan.tagUid);
       if(!tag||tag.revoked){res.json({state:'UNKNOWN_TAG',eventId:scan.eventId});return;}
-      const link:Linkage={id:randomUUID(),actor:s.id,patient:tag.patientId,expiresAt:new Date(clock().getTime()+120000).toISOString()};
+      const link:Linkage={id:randomUUID(),actor:s.id,patient:tag.patientId,expiresAt:new Date(clock().getTime()+120000).toISOString(),rfid:{deviceId:s.reader,eventId:scan.eventId}};
       store.put('link',link.id,link);res.json({state:'CANDIDATE',eventId:scan.eventId,patientId:tag.patientId,linkageId:link.id});
     }catch(e){next(e);}
   });
@@ -244,6 +299,14 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         const g:Grant={id:randomUUID(),actor:s.id,patient:p.id,deviceId:input.deviceId,releaseRevision:p.release.revision,expiresAt:new Date(clock().getTime()+600000).toISOString(),purpose:input.purpose};
         store.put('grant',g.id,g);
         store.put('grant-session',g.id,{sessionHash:res.locals.tokenHash});
+        if(link.rfid&&s.reader===link.rfid.deviceId){
+          const scan=store.get<Scan>('scan',link.rfid.eventId);
+          const latest=store.get<{eventId:string}>('reader-scan',s.reader);
+          const tag=scan&&store.get<{patientId:string;revoked:boolean}>('tag',scan.tagUid);
+          if(scan?.deviceId===s.reader&&latest?.eventId===scan.eventId&&tag?.patientId===p.id&&!tag.revoked&&Date.parse(scan.receivedAt)>clock().getTime()-120000){
+            store.put('reader-display',s.reader+':'+scan.eventId,{grantId:g.id,expiresAt:new Date(clock().getTime()+90000).toISOString()} satisfies ReaderDisplay);
+          }
+        }
         return g;
       }));
     }catch(e){next(e);}

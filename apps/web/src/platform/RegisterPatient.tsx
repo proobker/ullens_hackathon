@@ -9,7 +9,7 @@ import { PhotoCapture, type PhotoSource } from './PhotoCapture';
 
 const MAX_SIDE=480;
 // Downscale to a small JPEG before upload; the server stores it in the demo database.
-function toJpeg(source:PhotoSource){
+export function toJpeg(source:PhotoSource){
   const w=source instanceof HTMLImageElement?source.naturalWidth:source.width,h=source instanceof HTMLImageElement?source.naturalHeight:source.height;
   const scale=Math.min(1,MAX_SIDE/Math.max(w,h)),canvas=document.createElement('canvas');
   canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);canvas.getContext('2d')!.drawImage(source,0,0,canvas.width,canvas.height);
@@ -18,7 +18,7 @@ function toJpeg(source:PhotoSource){
 
 const blank={name:'',dob:'',bloodGroup:'',allergies:'',tagUid:'',username:'',password:''};
 
-// Hospital registration: synthetic record, patient login and a required face photo. Emergency sharing stays off until the patient opts in.
+// Hospital registration supports adding the face photo later.
 export function RegisterPatient({onRegistered}:{onRegistered:(p:{id:string;name:string})=>void}){
   const [form,setForm]=useState(blank),[synthetic,setSynthetic]=useState(false),[photoConsent,setPhotoConsent]=useState(false);
   const [face,setFace]=useState<{photo:string;descriptor:number[]}|null>(null),[faceBusy,setFaceBusy]=useState(false),[faceError,setFaceError]=useState('');
@@ -38,20 +38,20 @@ export function RegisterPatient({onRegistered}:{onRegistered:(p:{id:string;name:
   async function submit(){
     setBusy(true);setError('');setDone(null);
     try{
-      const body:RegisterPatientRequest={requestId:requestId(),name:form.name.trim(),dob:form.dob,username:form.username.trim(),password:form.password,photo:face!.photo,descriptor:face!.descriptor,
+      const body:RegisterPatientRequest={requestId:requestId(),name:form.name.trim(),dob:form.dob,username:form.username.trim(),password:form.password,...(face?{photo:face.photo,descriptor:face.descriptor}:{}),
         ...(form.bloodGroup?{bloodGroup:form.bloodGroup as RegisterPatientRequest['bloodGroup']}:{}),
         ...(form.allergies.trim()?{allergies:form.allergies.trim()}:{}),
         ...(form.tagUid.trim()?{tagUid:form.tagUid.trim()}:{})};
       const result=await api<RegisteredPatient>('platform/patients',body);
-      setDone(result);setDonePhoto(face!.photo);setForm(blank);setSynthetic(false);setPhotoConsent(false);setFace(null);setCaptureKey(k=>k+1);onRegistered({id:result.patientId,name:result.name});
+      setDone(result);setDonePhoto(face?.photo??'');setForm(blank);setSynthetic(false);setPhotoConsent(false);setFace(null);setCaptureKey(k=>k+1);onRegistered({id:result.patientId,name:result.name});
     }catch(e){setError(e instanceof Error?e.message:'Registration failed');}
     finally{setBusy(false);}
   }
 
-  const ready=synthetic&&photoConsent&&face&&form.name.trim()&&form.dob&&/^[a-z0-9_-]{3,32}$/.test(form.username.trim())&&form.password.length>=12;
+  const ready=synthetic&&(!face||photoConsent)&&!faceBusy&&form.name.trim()&&form.dob&&/^[a-z0-9_-]{3,32}$/.test(form.username.trim())&&form.password.length>=12;
   return <section className="surface wide register-patient">
     <h2><UserPlus/> Register patient</h2>
-    <p>Creates a synthetic Pran Rekha record, a patient login, an opaque QR locator and a saved face photo for lookup. Blood group and allergies are signed by this hospital; emergency sharing stays off until the patient approves each entry.</p>
+    <p>Creates a synthetic Pran Rekha record, a patient login and an opaque QR locator. You can add a face photo now or later. Emergency sharing stays off until the patient approves each entry.</p>
     <form className="register-grid" onSubmit={e=>{e.preventDefault();if(ready)void submit();}}>
       <label>Full name<input {...field('name')} autoComplete="off"/></label>
       <label>Date of birth<input type="date" {...field('dob')} max={new Date().toISOString().slice(0,10)}/></label>
@@ -61,13 +61,14 @@ export function RegisterPatient({onRegistered}:{onRegistered:(p:{id:string;name:
       <label>Patient username<input {...field('username')} autoComplete="off" placeholder="lowercase, 3–32 characters"/></label>
       <label>Initial password<input type="password" {...field('password')} autoComplete="new-password" placeholder="12+ characters"/></label>
       <fieldset className="register-photo">
-        <legend>Face photo (required)</legend>
+        <legend>Face photo (optional; can be added later)</legend>
         {modelState==='idle'&&<p role="status">Loading local face model…</p>}
-        {modelState==='unavailable'?<p role="alert" className="error">Face model unavailable — registration needs a photo.</p>
+        {modelState==='unavailable'?<p role="status">Face model unavailable. You can register now and add a photo later.</p>
           :<PhotoCapture key={captureKey} disabled={modelState!=='ready'} busy={faceBusy} alt="Registration photo" onImage={onPhoto} onError={setFaceError}/>}
         {faceBusy&&<p role="status">Checking for exactly one face…</p>}
         {faceError&&<p role="alert" className="error">{faceError}</p>}
-        <p className={face?'verified':'unverified'}>{face?'One face detected. Photo ready — upload or capture again to retake.':'A face photo is required. Upload or capture an image of exactly one person.'}</p>
+        <p className={face?'verified':'unverified'}>{face?'One face detected. Photo ready.':'No photo selected. Face matching becomes available after you add one.'}</p>
+        {face&&<button type="button" onClick={()=>{setFace(null);setPhotoConsent(false);setCaptureKey(k=>k+1);}}>Add photo later</button>}
       </fieldset>
       <label className="check"><input type="checkbox" checked={photoConsent} onChange={e=>setPhotoConsent(e.target.checked)}/>Participant consents to storing this face photo on the demo server</label>
       <label className="check"><input type="checkbox" checked={synthetic} onChange={e=>setSynthetic(e.target.checked)}/>Synthetic demonstration data only — no real patient information</label>
