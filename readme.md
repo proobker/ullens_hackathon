@@ -36,7 +36,7 @@ It builds the app, opens the tunnel, starts the API and web servers with the tun
 
 For a USB-connected Android phone, `chrome://inspect` → Port forwarding `5173 → localhost:5173` also works, because `localhost` counts as secure. `npm run dev:https --workspace @pran-rekha/web` serves a self-signed certificate on the LAN, but phones won't trust it, so the camera works only after accepting the warning and the service worker won't register.
 
-To change the icon, replace `apps/web/assets/logo.svg` (or add `logo.png`, square, ideally 1024px) and run `rtk npm run icons --workspace @pran-rekha/web`.
+To change the branding, replace `apps/web/assets/logo-wordmark.png` (header and offline page) and `apps/web/assets/icon.png` (the square-ish mark used for app icons and favicon, currently the heartbeat cropped from the wordmark), then run `rtk npm run icons --workspace @pran-rekha/web`.
 
 ## Verification
 

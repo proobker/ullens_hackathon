@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: [{ media: '(prefers-color-scheme: light)', color: '#0d9488' }, { media: '(prefers-color-scheme: dark)', color: '#0f172a' }]
+  themeColor: [{ media: '(prefers-color-scheme: light)', color: '#dc143c' }, { media: '(prefers-color-scheme: dark)', color: '#0f172a' }]
 };
 const themeScript="try{if(localStorage.getItem('pran-theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}";
 export default function RootLayout({ children }: { children: ReactNode }) {

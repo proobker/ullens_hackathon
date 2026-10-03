@@ -16,6 +16,10 @@
 
 .portal-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px clamp(16px, 4vw, 32px); border-bottom: 1px solid var(--line); background: var(--surface); }
 .logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--rose); text-decoration: none; font-size: 1.1rem; }
+/* Blue Devanagari would vanish on the dark surface, so the wordmark keeps a light chip. */
+.logo img { display: block; height: 32px; width: auto; }
+:root[data-theme='dark'] .platform .logo img { background: #fff; border-radius: 8px; padding: 3px 8px; }
+@media (max-width: 480px) { .logo img { height: 26px; } }
 .header-right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: .75rem; font-weight: 600; }
 

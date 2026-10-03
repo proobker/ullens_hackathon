@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Activity, ShieldCheck, Radio, Hospital, FlaskConical, UserRound, LogOut, TriangleAlert, Bell, BellOff, QrCode, Moon, Sun } from 'lucide-react';
+import { ShieldCheck, Radio, Hospital, FlaskConical, UserRound, LogOut, TriangleAlert, Bell, BellOff, QrCode, Moon, Sun } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import QRCode from 'qrcode';
 import type { Alert, Card, Entry, PlatformProfile } from '@pran-rekha/contracts/platform';
@@ -119,7 +119,7 @@ export default function Portal({portal}:{portal:PortalName}) {
   const warnings=(c:Card)=>c.entries.filter(e=>e.kind==='allergy').map(e=><p key={e.id} className="allergy-banner" role="alert"><TriangleAlert aria-hidden/> Recorded allergy: {e.text}. Review the attributed source; this is not a treatment instruction.</p>);
 
   return <div className="platform">
-    <header className="portal-header"><Link href="/patient" className="logo"><Activity/> Pran Rekha</Link><span className="pill">{t.synthetic}</span>
+    <header className="portal-header"><Link href="/patient" className="logo"><img src="/brand/pranrekha-logo.png" alt="Pran Rekha" width={960} height={198}/></Link><span className="pill">{t.synthetic}</span>
       <div className="header-right"><button aria-pressed={theme==='dark'} aria-label={theme==='dark'?t.toLight:t.toDark} onClick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}{theme==='dark'?t.light:t.dark}</button><button onClick={()=>setLanguage(language==='en'?'ne':'en')}>{language==='en'?'नेपाली':'English'}</button>{session&&<button onClick={()=>void run(signOut)}><LogOut size={16}/>{t.signOut}</button>}</div>
     </header>
     <nav className="portal-nav">{routes.map(([name,Icon])=><Link aria-current={portal===name?'page':undefined} key={name} href={'/'+name}><Icon size={18}/>{t[name]}</Link>)}</nav>
