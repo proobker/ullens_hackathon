@@ -62,6 +62,25 @@ describe('combined platform',()=>{
     const next=await access();const p=store.get<Profile>('profile',pid)!;p.release.revoked=true;store.put('profile',pid,p);
     expect((await next.a.post(base+'/cards').send({grantId:next.grant.id})).body.error.code).toBe('GRANT_REVOKED');
   });
+  it('does not expand an existing hospital dispatch when the patient changes the release',async()=>{
+    const {a,grant}=await access();
+    expect((await a.post(base+'/dispatch').send({requestId:'scope-dispatch',grantId:grant.id,destination:'hospital-demo',etaMinutes:5})).status).toBe(200);
+    const patient=await actor('siddharth');
+    const profile=await patient.get(base+'/profiles/'+pid);
+    expect((await patient.post(base+'/profiles/'+pid+'/release').send({requestId:'changed-release',expectedRevision:profile.body.revision,allowedEntryIds:profile.body.entries.map((e:{id:string})=>e.id)})).status).toBe(200);
+    const hospital=await actor('hospital');
+    const alerts=await hospital.post(base+'/alerts/read').send({});
+    expect(alerts.status).toBe(200);
+    expect(alerts.body[0].unavailable).toBe(true);
+    expect(alerts.body[0].card).toBeUndefined();
+  });
+  it('binds emergency grants to the requesting login session',async()=>{
+    const {a,grant}=await access();
+    const otherSession=await actor('paramedic');
+    expect((await otherSession.post(base+'/cards').send({grantId:grant.id})).status).toBe(404);
+    expect((await otherSession.post(base+'/dispatch').send({requestId:'stolen-grant',grantId:grant.id,destination:'hospital-demo',etaMinutes:5})).status).toBe(404);
+    expect((await a.post(base+'/cards').send({grantId:grant.id})).status).toBe(200);
+  });
   it('detects signed record tampering',async()=>{
     const p=store.get<Profile>('profile',pid)!;p.versions[0]!.entries[0]!.text='tampered';store.put('profile',pid,p);
     const patient=await actor('siddharth');expect((await patient.get(base+'/profiles/'+pid)).body.error.code).toBe('SIGNATURE_INVALID');

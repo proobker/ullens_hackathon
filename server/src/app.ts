@@ -12,6 +12,7 @@ import { Repository } from './storage/repository.js';
 import { hashPassword } from './storage/seed.js';
 import { PlatformStore } from './platform/store.js';
 import { platformRouter } from './platform/routes.js';
+import { seedMedicationMatrix } from './platform/fixtures.js';
 
 const COOKIE_NAME = 'pran_rekha_session';
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
@@ -52,6 +53,7 @@ export function createApp(options: AppOptions) {
   const repository = new Repository(options.database);
   const platform = new PlatformStore(options.database);
   platform.seed();
+  seedMedicationMatrix(platform);
   const clock = options.clock ?? (() => new Date());
   const secureCookies = options.secureCookies ?? process.env.NODE_ENV === 'production';
 

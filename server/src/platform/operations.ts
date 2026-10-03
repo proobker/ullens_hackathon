@@ -34,7 +34,9 @@ export function operationsRouter(store:PlatformStore,clock:()=>Date){
       const p=store.get<Profile>('profile',input.patientId);if(!p||p.release.revoked)throw new Error('GRANT_REVOKED');
       res.json(store.mutate(s.id,input.requestId,input,()=>{
         const pending:RequestRecord={id:randomUUID(),actor:s.id,patient:p.id,purpose:input.purpose,deviceId:input.deviceId,releaseRevision:p.release.revision,status:'PENDING',expiresAt:new Date(clock().getTime()+300000).toISOString()};
-        store.put('break-glass',pending.id,pending);return pending;
+        store.put('break-glass',pending.id,pending);
+        store.put('break-glass-session',pending.id,{sessionHash:res.locals.tokenHash});
+        return pending;
       }));
     }catch(e){next(e);}
   });
@@ -53,7 +55,10 @@ export function operationsRouter(store:PlatformStore,clock:()=>Date){
         if(b.status!=='PENDING'||Date.parse(b.expiresAt)<=clock().getTime())throw new Error('CONFLICT');
         const p=store.get<Profile>('profile',b.patient);if(!p||p.release.revoked||p.release.revision!==b.releaseRevision)throw new Error('GRANT_REVOKED');
         const g={id:randomUUID(),actor:b.actor,patient:b.patient,deviceId:b.deviceId,releaseRevision:b.releaseRevision,purpose:b.purpose,expiresAt:new Date(clock().getTime()+300000).toISOString()};
-        store.put('grant',g.id,g);store.put('break-glass',id,{...b,status:'APPROVED',approvedBy:s.id,grantId:g.id});
+        const binding=store.get<{sessionHash:string}>('break-glass-session',id);
+        if(!binding)throw new Error('FORBIDDEN');
+        store.put('grant',g.id,g);store.put('grant-session',g.id,binding);
+        store.put('break-glass',id,{...b,status:'APPROVED',approvedBy:s.id,grantId:g.id});
         store.put('notification',id,{id,patientId:p.id,status:'PENDING',channel:'demo_outbox',at:clock().toISOString()});
         store.receipt(p.id,s.id,'Break-glass approval',[],clock(),{requester:b.actor});
         return {grantId:g.id,status:'APPROVED'};

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { MedicationRecordSchema, type MedicationRecord } from '@pran-rekha/contracts';
 import { lifecycle, type LifecycleEvent } from '@pran-rekha/domain';
-import { digest, type PlatformStore, type Staff } from './store.js';
+import { digest, type PlatformStore, type Staff, type Profile } from './store.js';
 const text=z.string().min(1).max(2000);
 const EventInput=z.object({requestId:text,expectedRevision:z.number().int().nonnegative(),kind:z.enum(['started','stopped','held','resumed','completed','status_confirmed','dose_changed','substituted','corrected','retracted']),effectiveDate:z.iso.date(),source:text,status:z.enum(['documented_active','unknown']).optional(),targetEventId:text.optional(),replacementEventId:text.optional(),replacementRecordId:text.optional()}).strict();
 export function medicationsRouter(store:PlatformStore,clock:()=>Date){
@@ -29,7 +29,11 @@ export function medicationsRouter(store:PlatformStore,clock:()=>Date){
         store.put('attestation',sourceId,{id:sourceId,patientId:pid,text:input.source,actorId:s.id,at:clock().toISOString()});
         const date=(d:string|null)=>d?{rawText:d,calendar:'AD',precision:'day',adDate:d,instant:null,sourceTimezone:null,conversionVersion:null,confirmedBy:s.id}:null;
         const record=MedicationRecordSchema.parse({id,patientId:pid,prescriptionStreamId:randomUUID(),drug:{rawText:input.drugText,genericName:null,resolution:'verbatim',aliasEntryId:null,aliasTableVersion:null},doseText:input.doseText,frequencyText:input.frequencyText,routeText:null,durationText:null,startDate:date(input.startDate),endDate:date(input.endDate),prescriberText:s.id,organisationText:s.facility,sourceRefs:[{kind:'attestation',sourceId,version:1,sha256:digest(input.source),field:'text'}],recordedAt:clock().toISOString(),mode:'synthetic_fixture'});
-        store.put('med-record',id,record);return record;
+        const p=store.get<Profile>('profile',pid);if(!p)throw new Error('FORBIDDEN');
+        const entry={id,kind:'medication' as const,text:input.drugText+' · '+input.doseText+' · '+input.frequencyText,date:input.startDate??clock().toISOString().slice(0,10),source:'Prescription attestation by '+s.id,excerpt:input.source,author:s.id,reviewed:true};
+        p.revision++;p.entries.push(entry);
+        p.versions.push(store.signVersion({id:randomUUID(),patientId:pid,revision:p.revision,facility:s.facility,signer:s.id,signedAt:clock().toISOString(),reviewDue:p.reviewDue,entries:[entry]}));
+        store.put('profile',pid,p);store.put('med-record',id,record);return record;
       }));
     }catch(e){next(e);}
   });

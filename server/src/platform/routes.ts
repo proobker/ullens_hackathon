@@ -6,6 +6,8 @@ import { canonical, digest, freshness, NOTICE, PlatformStore, sixMonths, type Pr
 import { intakeRouter } from './intake.js';
 import { operationsRouter } from './operations.js';
 import { medicationsRouter } from './medications.js';
+import { lifecycle, type LifecycleEvent } from '@pran-rekha/domain';
+import type { MedicationRecord } from '@pran-rekha/contracts';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
 type Linkage = {id:string;actor:string;patient:string;expiresAt:string};
 type Reader = {id:string;tokenHash:string;revoked:boolean;lastSeen:string|null};
@@ -29,13 +31,19 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
     const p=profile(pid);
     if(p.release.revoked) throw new Error('GRANT_REVOKED');
     if(!store.verifyProfile(p)) throw new Error('SIGNATURE_INVALID');
-    const entries=p.entries.filter(e=>p.release.allowedEntryIds.includes(e.id));
+    const entries=p.entries.filter(e=>p.release.allowedEntryIds.includes(e.id)).map(entry=>{
+      if(entry.kind!=='medication')return entry;
+      const record=store.get<MedicationRecord>('med-record',entry.id);if(!record)return entry;
+      const view=lifecycle(record,store.all<LifecycleEvent>('med-event'),clock().toISOString());
+      return {...entry,text:entry.text+' · '+view.state+' · actual use not established'};
+    });
     const receiptId=store.receipt(pid,actor,purpose,entries.map(e=>e.id),clock());
     return CardSchema.parse({patientId:pid,name:p.name,entries,notice:NOTICE,generatedAt:clock().toISOString(),expiresAt,receiptId});
   }
-  function grant(id:string,actor:string) {
+  function grant(id:string,actor:string,sessionHash:string) {
     const g=store.get<Grant>('grant',id);
-    if(!g||g.actor!==actor) return unavailable();
+    const binding=store.get<{sessionHash:string}>('grant-session',id);
+    if(!g||g.actor!==actor||!binding||binding.sessionHash!==sessionHash) return unavailable();
     if(Date.parse(g.expiresAt)<=clock().getTime()) throw new Error('GRANT_EXPIRED');
     const p=profile(g.patient);
     if(p.release.revoked||p.release.revision!==g.releaseRevision) throw new Error('GRANT_REVOKED');
@@ -151,23 +159,27 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         const link=store.get<Linkage>('link',input.linkageId);if(!link||link.actor!==s.id||link.patient!==input.patientId||Date.parse(link.expiresAt)<=clock().getTime())return unavailable();
         const p=profile(input.patientId);if(p.release.revoked)throw new Error('GRANT_REVOKED');
         const g:Grant={id:randomUUID(),actor:s.id,patient:p.id,deviceId:input.deviceId,releaseRevision:p.release.revision,expiresAt:new Date(clock().getTime()+600000).toISOString(),purpose:input.purpose};
-        store.put('grant',g.id,g);return g;
+        store.put('grant',g.id,g);
+        store.put('grant-session',g.id,{sessionHash:res.locals.tokenHash});
+        return g;
       }));
     }catch(e){next(e);}
   });
   router.post('/cards',(req,res,next)=>{
     try{const s=res.locals.staff as Staff,input=z.object({grantId:text}).strict().parse(req.body);
-      const g=grant(input.grantId,s.id);res.json(store.transaction(()=>project(g.patient,s.id,g.purpose,g.expiresAt)));
+      const g=grant(input.grantId,s.id,res.locals.tokenHash);res.json(store.transaction(()=>project(g.patient,s.id,g.purpose,g.expiresAt)));
     }catch(e){next(e);}
   });
   router.post('/dispatch',(req,res,next)=>{
     try {
       const s=res.locals.staff as Staff,input=DispatchRequestSchema.parse(req.body);if(s.role!=='paramedic'||input.destination!=='hospital-demo')return unavailable();
       // Grant is checked even for an idempotent retry.
-      const g=grant(input.grantId,s.id);
+      const g=grant(input.grantId,s.id,res.locals.tokenHash);
       const result=store.mutate(s.id,input.requestId,input,()=>{
         const alert:Alert={id:randomUUID(),patientId:g.patient,destination:input.destination,unit:s.unit,etaMinutes:input.etaMinutes,timestamp:clock().toISOString(),status:'EN_ROUTE',revision:1,card:project(g.patient,s.id,'Dispatch: '+g.purpose,g.expiresAt)};
-        store.put('alert',alert.id,alert);return {id:alert.id};
+        store.put('alert',alert.id,alert);
+        store.put('alert-release',alert.id,{revision:g.releaseRevision});
+        return {id:alert.id};
       });notify();res.json(result);
     }catch(e){next(e);}
   });
@@ -175,7 +187,8 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
     try{const s=res.locals.staff as Staff;if(s.facility!=='hospital-demo'||s.role!=='clinician')return unavailable();
       const result=store.transaction(()=>store.all<Alert>('alert').filter(a=>a.destination===s.facility).map(a=>{
         const p=profile(a.patientId);
-        if(p.release.revoked||Date.parse(a.card.expiresAt)<=clock().getTime())return {id:a.id,status:a.status,unavailable:true};
+        const scope=store.get<{revision:number}>('alert-release',a.id);
+        if(!scope||scope.revision!==p.release.revision||p.release.revoked||Date.parse(a.card.expiresAt)<=clock().getTime())return {id:a.id,status:a.status,unavailable:true};
         return {...a,card:project(p.id,s.id,'Hospital dispatch review',a.card.expiresAt)};
       }));res.json(result);
     }catch(e){next(e);}

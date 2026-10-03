@@ -10,6 +10,9 @@
     "apps/web"
   ],
   "scripts": {
+    "start": "concurrently -k -n api,web \"npm run start --workspace @pran-rekha/server\" \"npm run start --workspace @pran-rekha/web\"",
+    "test:e2e": "playwright test",
+    "rfid:simulate": "node scripts/simulate-rfid.mjs",
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev --workspace @pran-rekha/server\" \"npm run dev --workspace @pran-rekha/web\"",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",

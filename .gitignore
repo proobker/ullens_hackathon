@@ -8,4 +8,6 @@ coverage/
 *.tsbuildinfo
 firmware/**/secrets.h
 firmware/**/.pio/
+test-results/
+playwright-report/
 conv/

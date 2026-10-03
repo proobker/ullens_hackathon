@@ -86,7 +86,7 @@ export default function Portal({portal}:{portal:PortalName}) {
     const online=()=>{void flushOfflineReceipts().catch(()=>{});};
     online();window.addEventListener('online',online);return()=>window.removeEventListener('online',online);
   },[session,portal]);
-  useEffect(()=>{if(!card&&!offlineCard)return;const expiry=Math.min(Date.parse((card??offlineCard)!.expiresAt),Date.now()+600000);const timer=setTimeout(()=>{setCard(null);setOfflineCard(null);setMessage('Session expired. Unlock again.');},Math.max(0,expiry-Date.now()));return()=>clearTimeout(timer);},[card,offlineCard]);
+  useEffect(()=>{if(!card&&!offlineCard)return;const expiry=Math.min(Date.parse((card??offlineCard)!.expiresAt),Date.now()+600000);const timer=setTimeout(()=>{setCard(null);setOfflineCard(null);setSource(null);setGrantId('');setMessage('Session expired. Unlock again.');},Math.max(0,expiry-Date.now()));return()=>clearTimeout(timer);},[card,offlineCard]);
 
   async function login(){const s=await api<SessionResponse>('session',{username,password});setSession(s);await refresh();}
   async function signOut(){
@@ -104,13 +104,13 @@ export default function Portal({portal}:{portal:PortalName}) {
     <h3>{entry.kind==='allergy'&&<TriangleAlert size={18} aria-hidden/>} {entry.text}</h3>
     <p>{entry.date}</p>
     {entry.reviewed
-      ?<p className="verified"><ShieldCheck size={14} aria-hidden/> Verified by {entry.source}</p>
+      ?<p className="verified"><ShieldCheck size={14} aria-hidden/> Signed demo record · {entry.source}</p>
       :<p className="unverified">Patient report · not clinically verified</p>}
     <button onClick={()=>setSource(entry)}>{t.source}</button>
     {entry.kind==='blood_group'&&<p className="caution">Historical recorded blood group. Follow the treating service's verification and compatibility procedures.</p>}
   </article>);
 
-  const warnings=(c:Card)=>c.entries.filter(e=>e.kind==='allergy').map(e=><p key={e.id} className="allergy-banner" role="alert"><TriangleAlert aria-hidden/> Recorded allergy: {e.text}. Confirm before administering related agents.</p>);
+  const warnings=(c:Card)=>c.entries.filter(e=>e.kind==='allergy').map(e=><p key={e.id} className="allergy-banner" role="alert"><TriangleAlert aria-hidden/> Recorded allergy: {e.text}. Review the attributed source; this is not a treatment instruction.</p>);
 
   return <div className={'platform '+(portal==='hospital'?'dark':'')}>
     <header className="portal-header"><Link href="/patient" className="logo"><Activity/> Pran Rekha</Link><span className="pill">{t.synthetic}</span>
