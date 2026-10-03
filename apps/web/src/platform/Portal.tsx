@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import type { Alert, Card, Entry, PlatformProfile } from '@pran-rekha/contracts/platform';
 import type { SessionResponse } from '@pran-rekha/contracts';
 import { api, labels, requestId, usePreferences } from './client';
-import { prepare, syncReceipts, unlock } from './offline';
+import { browserDeviceId, prepareBrowserShell, prepare, syncReceipts, unlock } from './offline';
 import { BreakGlass, RecordWorkflows } from './Workflows';
 
 type PortalName='patient'|'paramedic'|'hospital'|'lab';
@@ -195,7 +195,7 @@ export default function Portal({portal}:{portal:PortalName}) {
       </>}
 
       {portal==='patient'&&<section className="surface offline-panel"><h2>Prepared offline viewer</h2><label>Unlock phrase (12+ characters)<input type="password" value={phrase} onChange={e=>setPhrase(e.target.value)}/></label>
-        {session&&profile&&<button onClick={()=>void run(async()=>{await prepare(await api('platform/profiles/'+patientId+'/snapshot',{deviceId:'prepared-browser'}),phrase);setPhrase('');setMessage('Encrypted snapshot prepared on this browser.');})}>{t.offline}</button>}
+        {session&&profile&&<button onClick={()=>void run(async()=>{await prepareBrowserShell();await prepare(await api('platform/profiles/'+patientId+'/snapshot',{deviceId:await browserDeviceId()}),phrase);setPhrase('');setMessage('Encrypted snapshot prepared on this browser.');})}>{t.offline}</button>}
         <button onClick={()=>void run(async()=>{const snap=await unlock(phrase);setOfflineCard(snap.card);setPhrase('');if(session&&navigator.onLine)await flushOfflineReceipts().catch(()=>{});})}>Unlock saved snapshot</button>
         {offlineCard&&<><p>Offline snapshot from {offlineCard.generatedAt}; later changes and revocations may be unavailable.</p><p>{offlineCard.notice}</p><div className="entries">{renderEntries(offlineCard.entries)}</div></>}
       </section>}

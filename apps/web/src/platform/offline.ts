@@ -9,6 +9,28 @@ async function derive(phrase:string,salt:Uint8Array<ArrayBuffer>) {
   const raw=await crypto.subtle.importKey('raw',new TextEncoder().encode(phrase),'PBKDF2',false,['deriveKey']);
   return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:310000,hash:'SHA-256'},raw,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
+export async function browserDeviceId():Promise<string>{
+  const db=await database();
+  try{return await new Promise<string>((resolve,reject)=>{
+    const tx=db.transaction('vault','readwrite'),vault=tx.objectStore('vault'),read=vault.get('device-id');
+    let id:string;
+    read.onsuccess=()=>{id=typeof read.result==='string'?read.result:crypto.randomUUID();vault.put(id,'device-id');};
+    tx.oncomplete=()=>resolve(id);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+  });}finally{db.close();}
+}
+export async function prepareBrowserShell():Promise<void>{
+  if(!('serviceWorker' in navigator))throw new Error('Offline preparation requires a secure browser origin.');
+  await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  // This route is a static, unauthenticated shell. Never cache an API response.
+  const assets=new Set(['/patient','/offline.html']);
+  for(const resource of performance.getEntriesByType('resource')){
+    const url=new URL(resource.name);
+    if(url.origin===location.origin&&url.pathname.startsWith('/_next/static/'))assets.add(url.pathname);
+  }
+  const cache=await caches.open('pran-shell-v1');
+  await cache.addAll([...assets]);
+}
 export async function prepare(snapshot:Snapshot,phrase:string) {
   if(phrase.length<12)throw new Error('Use an unlock phrase of at least 12 characters.');
   const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));

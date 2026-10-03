@@ -81,6 +81,38 @@ describe('combined platform',()=>{
     expect((await otherSession.post(base+'/dispatch').send({requestId:'stolen-grant',grantId:grant.id,destination:'hospital-demo',etaMinutes:5})).status).toBe(404);
     expect((await a.post(base+'/cards').send({grantId:grant.id})).status).toBe(200);
   });
+  it('requires a distinct approver and limits break-glass access to five minutes',async()=>{
+    const requester=await actor('hospital');
+    const patient=await actor('siddharth');
+    const profile=await patient.get(base+'/profiles/'+pid);
+    const link=await requester.post(base+'/linkage').send({locator:profile.body.locator});
+    const pending=await requester.post(base+'/break-glass').send({requestId:'break-1',...link.body,deviceId:'review-browser',purpose:'Synthetic emergency review',confirmed:true});
+    expect(pending.status).toBe(200);
+    expect((await requester.post(base+'/break-glass/'+pending.body.id+'/approve').send({requestId:'self-approval'})).status).toBe(404);
+    const approver=await actor('approver');
+    const approved=await approver.post(base+'/break-glass/'+pending.body.id+'/approve').send({requestId:'independent-approval'});
+    expect(approved.status).toBe(200);
+    expect((await requester.post(base+'/cards').send({grantId:approved.body.grantId})).status).toBe(200);
+    now=new Date(now.getTime()+300001);
+    expect((await requester.post(base+'/cards').send({grantId:approved.body.grantId})).body.error.code).toBe('GRANT_EXPIRED');
+    expect((await patient.get(base+'/profiles/'+pid+'/receipts')).body.some((r:{purpose:string})=>r.purpose==='Break-glass approval')).toBe(true);
+  });
+  it('keeps imported originals private and attributes manual source confirmation',async()=>{
+    const patient=await actor('siddharth'),other=await actor('lab');
+    const payload={requestId:'intake-1',title:'Synthetic pixel source',base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFZkAAAAASUVORK5CYII='};
+    const uploaded=await patient.post(base+'/profiles/'+pid+'/documents').send(payload);
+    expect(uploaded.status).toBe(200);
+    expect((await patient.post(base+'/profiles/'+pid+'/documents').send({...payload,requestId:'intake-duplicate'})).body).toMatchObject({id:uploaded.body.id,duplicate:true});
+    expect((await other.get(base+'/documents/'+uploaded.body.id+'/original')).status).toBe(404);
+    expect((await other.get(base+'/documents/absent/original')).status).toBe(404);
+    expect((await patient.get(base+'/documents/'+uploaded.body.id+'/original')).status).toBe(200);
+    const p=await patient.get(base+'/profiles/'+pid);
+    const confirmation={requestId:'confirm-1',expectedRevision:p.body.revision,page:1,start:0,end:0,text:'Synthetic handwritten patient note',date:'2026-10-03',kind:'report'};
+    const confirmed=await patient.post(base+'/documents/'+uploaded.body.id+'/confirm').send(confirmation);
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body).toMatchObject({reviewed:false,excerpt:'Synthetic handwritten patient note',author:'portal-siddharth'});
+    expect((await patient.post(base+'/documents/'+uploaded.body.id+'/confirm').send({...confirmation,requestId:'stale-confirm'})).status).toBe(409);
+  });
   it('detects signed record tampering',async()=>{
     const p=store.get<Profile>('profile',pid)!;p.versions[0]!.entries[0]!.text='tampered';store.put('profile',pid,p);
     const patient=await actor('siddharth');expect((await patient.get(base+'/profiles/'+pid)).body.error.code).toBe('SIGNATURE_INVALID');
