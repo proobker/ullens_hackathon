@@ -1,0 +1,17 @@
+# Asset licences
+
+## Face candidate matcher
+
+- Package: `@vladmandic/face-api` 1.7.15 (MIT), bundled TensorFlow.js runtime.
+- Models copied from the package's `model/` directory into `apps/web/public/models/` and served locally (no CDN):
+
+| File | SHA-256 |
+| --- | --- |
+| tiny_face_detector_model.bin | b7503ce7df31039b1c43316a9b865cab6a70dd748cc602d3fa28b551503c3871 |
+| tiny_face_detector_model-weights_manifest.json | 5d1af4849ac48d5b985f4a9b16010c512353ddd6fcc63d50fd0bc9e9e64296e5 |
+| face_landmark_68_model.bin | 4611ef65c87d836d03d684b30eec4d195d8b219fa1dd58fc58945831c6b9299b |
+| face_landmark_68_model-weights_manifest.json | ca4886639f86e99b39fed0c155f81b63317225773bd9616716e887b0153389c9 |
+| face_recognition_model.bin | b413e420d6840b2775fba32008db6f3cddb07d485967fb42cfcf379c16a8c589 |
+| face_recognition_model-weights_manifest.json | cbaffa501b0b9275a12b63357a6843e7e30c054e1c9151e1a5f879b26e32986b |
+
+Candidate generation only: no liveness, anti-spoofing, population accuracy or demographic performance is claimed.

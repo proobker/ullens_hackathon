@@ -36,3 +36,11 @@ test('prepared patient viewer reloads offline and records access before display'
     return await new Promise<number>((resolve,reject)=>{const r=db.transaction('receipts').objectStore('receipts').count();r.onsuccess=()=>{db.close();resolve(r.result);};r.onerror=()=>reject(r.error);});
   })).toBeGreaterThan(0);
 });
+test('hospital face lookup stays disabled until consent',async({page})=>{
+  await page.goto('/hospital');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Possible patient lookup'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Use camera'})).toBeDisabled();
+  await page.getByLabel('Consent to session-only face candidate matching').check();
+  await expect(page.getByRole('button',{name:'Use camera'})).toBeEnabled({timeout:30000});
+});

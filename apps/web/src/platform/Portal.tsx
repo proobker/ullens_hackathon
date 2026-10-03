@@ -9,6 +9,7 @@ import type { SessionResponse } from '@pran-rekha/contracts';
 import { api, labels, requestId, usePreferences } from './client';
 import { browserDeviceId, prepareBrowserShell, prepare, syncReceipts, unlock } from './offline';
 import { BreakGlass, RecordWorkflows } from './Workflows';
+import { FaceLookup } from './FaceLookup';
 
 type PortalName='patient'|'paramedic'|'hospital'|'lab';
 type Context={staff:{role:string;facility:string;unit:string;reader:string};patients:{id:string;name:string}[]};
@@ -177,6 +178,7 @@ export default function Portal({portal}:{portal:PortalName}) {
         {card&&<section className="surface wide"><h2>{card.name}</h2>{warnings(card)}<p>{card.notice}</p><div className="entries">{renderEntries(card.entries)}</div></section>}
       </div>}
 
+      {portal==='hospital'&&<FaceLookup/>}
       {portal==='hospital'&&<section className="surface board">
         <div className="board-heading"><h2>Incoming patients</h2><div className="header-right">
           <button aria-pressed={sound} onClick={()=>setSound(!sound)}>{sound?<Bell size={16}/>:<BellOff size={16}/>} {sound?'Sound on':'Sound off'}</button>
