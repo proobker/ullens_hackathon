@@ -26,15 +26,13 @@ The clinician fixture (`demo.clinician` / `pran-demo-clinician`) is deliberately
 
 ## Install on a phone (PWA)
 
-The web app is installable: a manifest, icons, and the service worker turn it into a full-screen home-screen app. Phones only allow the camera, service worker, and install prompt over HTTPS, so expose the production build through a tunnel:
+The web app is installable: a manifest, icons, and the service worker turn it into a full-screen home-screen app. Phones only allow the camera, service worker, and install prompt over HTTPS, so `npm run phone` exposes the laptop through a free Cloudflare quick tunnel (no account or domain needed):
 
 ```powershell
-rtk npm run build
-rtk npm run start
-npx cloudflared tunnel --url http://localhost:5173
+rtk npm run phone
 ```
 
-Open the printed `https://…trycloudflare.com` URL on the phone, then use **Install app** (Android Chrome) or **Share → Add to Home Screen** (iOS Safari). The API stays on the laptop; Next proxies `/api` to it.
+It builds the app, opens the tunnel, starts the API and web servers with the tunnel URL added to `PUBLIC_ORIGIN` (otherwise logins from the phone are rejected), and prints the `https://…trycloudflare.com` URL with a QR code. Scan it, log in, then use **Install app** (Android Chrome) or **Share → Add to Home Screen** (iOS Safari). Stop `npm run dev` first, since both use ports 5173 and 4100. Pass `-- --skip-build` to reuse the last build. The URL changes every run, so reinstall the app each time. Everything stays on the laptop; Ctrl+C closes the tunnel.
 
 For a USB-connected Android phone, `chrome://inspect` → Port forwarding `5173 → localhost:5173` also works, because `localhost` counts as secure. `npm run dev:https --workspace @pran-rekha/web` serves a self-signed certificate on the LAN, but phones won't trust it, so the camera works only after accepting the warning and the service worker won't register.
 
