@@ -148,7 +148,7 @@ export function createApp(options: AppOptions) {
     response.json({actor:{id:actor.id,displayName:actor.display_name,role:platform.staff(actor.id)?.role??actor.role},patientIds:repository.patientIdsForActor(actor.id),mode:'synthetic_fixture'});
   });
   app.use('/api/platform', (request,response: Response<unknown, Locals>,next)=>{
-    if(request.path==='/rfid/scans' && request.method==='POST') { next(); return; }
+    if((request.path==='/rfid/scans' && request.method==='POST') || (request.path==='/rfid/display' && request.method==='GET')) { next(); return; }
     authenticate(request,response,next);
   }, platformRouter(platform,clock));
 

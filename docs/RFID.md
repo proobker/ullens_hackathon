@@ -1,5 +1,7 @@
 # ESP32 + RC522
 
+For the Raspberry Pi 3 B+ + Arduino Uno + LCD setup, see [RFID_UNO.md](RFID_UNO.md).
+
 Target: classic ESP32 DevKit, SPI RC522, compatible ISO 14443-A tags. RC522 is a 3.3 V device. Default wiring: SDA/SS→GPIO5, RST→22, SCK→18, MISO→19, MOSI→23, 3.3V→3V3 and GND→GND. Verify actual board labels before connecting; configure pins in the local header.
 
 Install PlatformIO, copy include/secrets.example.h to include/secrets.h, supply Wi-Fi, HTTPS URL, trusted CA and a uniquely provisioned reader token. Build/upload for esp32dev. No firmware build or physical test is claimed until recorded in DEVICE_MATRIX.md.

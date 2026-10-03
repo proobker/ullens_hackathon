@@ -167,8 +167,8 @@ export default function Portal({portal}:{portal:PortalName}) {
       </div>}
 
       {portal==='paramedic'&&<div className="portal-grid">
-        <section className="surface"><div className="scanner"><Radio size={64}/><p>ESP32 / RC522</p><span>Paired reader: {context?.staff.reader} · Unit {context?.staff.unit}</span></div>
-          <button onClick={()=>void run(async()=>{const result=await api<{state:string;patientId:string;linkageId:string}>('platform/rfid/pending');if(result.state==='CANDIDATE'){setLink(result);setConfirmed(false);}else setMessage('Reader: '+result.state);})}>{t.scan}</button>
+        <section className="surface"><div className="scanner"><Radio size={64}/><p>RFID scanner</p><span>Paired reader: {context?.staff.reader} · Unit {context?.staff.unit}</span></div>
+          <button onClick={()=>void run(async()=>{setLink(null);setCard(null);setGrantId('');setConfirmed(false);const result=await api<{state:string;patientId:string;linkageId:string}>('platform/rfid/pending');if(result.state==='CANDIDATE'){setLink({patientId:result.patientId,linkageId:result.linkageId});setMessage('Card found. Confirm access below to show the summary on the scanner LCD.');}else setMessage('Reader: '+result.state);})}>{t.scan}</button>
           <button onClick={()=>void run(async()=>{setLocator(demoLocator);await resolveLocator(demoLocator);setMessage('SIMULATED QR scan of the demo pass.');})}><QrCode size={16}/> Simulate QR scan</button>
           <label>QR / manual locator<input value={locator} onChange={e=>setLocator(e.target.value)}/></label><button disabled={!locator} onClick={()=>void run(()=>resolveLocator(locator))}>{t.manual}</button>
           <label className="check"><input type="checkbox" checked={faceConsent} onChange={e=>{setFaceConsent(e.target.checked);setFace(false);}}/>Consent to session-only face candidate simulation</label><button disabled={!faceConsent} onClick={()=>setFace(true)}>Simulate face candidate</button>{face&&<p>SIMULATED possible local candidate. Record remains locked. No image captured.</p>}

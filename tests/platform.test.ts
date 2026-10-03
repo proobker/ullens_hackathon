@@ -53,6 +53,59 @@ describe('combined platform',()=>{
     store.put('reader','reader-demo',{id:'reader-demo',revoked:true,tokenHash:''});
     expect((await request(app).post(base+'/rfid/scans').set('Authorization','Bearer synthetic-reader-secret-change-before-hardware').send(payload)).status).toBe(404);
   });
+  async function rfidAccess(eventId='lcd-scan') {
+    now=new Date(now.getTime()+1);
+    const a=await actor('paramedic');
+    await request(app).post(base+'/rfid/scans').set('Authorization','Bearer synthetic-reader-secret-change-before-hardware').send({version:1,deviceId:'reader-demo',eventId,tagUid:'DEADBEEF'});
+    const link=(await a.get(base+'/rfid/pending')).body;
+    const result=await a.post(base+'/grants').send({requestId:crypto.randomUUID(),patientId:link.patientId,linkageId:link.linkageId,deviceId:'staff-browser',purpose:'RFID emergency summary',confirmed:true});
+    expect(result.status).toBe(200);
+    return a;
+  }
+  const lcd=(eventId='lcd-scan')=>request(app).get(base+'/rfid/display').query({deviceId:'reader-demo',eventId}).set('Authorization','Bearer synthetic-reader-secret-change-before-hardware');
+  it('shows only approved scope on the LCD and clears it after 90 seconds',async()=>{
+    const payload={version:1,deviceId:'reader-demo',eventId:'lcd-scan',tagUid:'DEADBEEF'};
+    await request(app).post(base+'/rfid/scans').set('Authorization','Bearer synthetic-reader-secret-change-before-hardware').send(payload);
+    expect((await lcd()).body).toEqual({state:'WAITING_APPROVAL'});
+    expect((await request(app).get(base+'/rfid/display').query({deviceId:'reader-demo',eventId:'lcd-scan'})).status).toBe(404);
+    await rfidAccess();
+    const result=await lcd();
+    expect(result.body.state).toBe('AUTHORIZED');
+    expect(result.body.card.name).toBe('Siddharth Raj Sharma');
+    expect(JSON.stringify(result.body)).not.toContain('Excluded');
+    now=new Date(now.getTime()+90001);
+    expect((await lcd()).body).toEqual({state:'EXPIRED'});
+  });
+  it('never reuses a prior card authorization for a new scan',async()=>{
+    await rfidAccess();
+    now=new Date(now.getTime()+1);
+    const payload={version:1,deviceId:'reader-demo',eventId:'next-card',tagUid:'DEADBEEF'};
+    await request(app).post(base+'/rfid/scans').set('Authorization','Bearer synthetic-reader-secret-change-before-hardware').send(payload);
+    expect((await lcd()).body).toEqual({state:'EXPIRED'});
+    expect((await lcd('next-card')).body).toEqual({state:'WAITING_APPROVAL'});
+    // A retry of the old scan must not become the latest scan again.
+    await request(app).post(base+'/rfid/scans').set('Authorization','Bearer synthetic-reader-secret-change-before-hardware').send({version:1,deviceId:'reader-demo',eventId:'lcd-scan',tagUid:'DEADBEEF'});
+    expect((await lcd()).body).toEqual({state:'EXPIRED'});
+  });
+  it('clears the LCD when staff logs out or the release changes',async()=>{
+    const a=await rfidAccess();
+    await a.delete('/api/session');
+    expect((await lcd()).body).toEqual({state:'EXPIRED'});
+    await rfidAccess('new-session');
+    const p=store.get<Profile>('profile',pid)!;
+    p.release.revision++;store.put('profile',pid,p);
+    expect((await lcd('new-session')).body).toEqual({state:'EXPIRED'});
+  });
+  it('fails closed for tag revocation, invalid signatures and failed LCD auditing',async()=>{
+    await rfidAccess();
+    db.exec("CREATE TRIGGER fail_lcd_receipt BEFORE INSERT ON platform_receipts BEGIN SELECT RAISE(ABORT,'audit failure'); END;");
+    expect((await lcd()).status).toBe(503);
+    db.exec('DROP TRIGGER fail_lcd_receipt');
+    const p=store.get<Profile>('profile',pid)!;p.versions[0]!.entries[0]!.text='tampered';store.put('profile',pid,p);
+    expect((await lcd()).body.error.code).toBe('SIGNATURE_INVALID');
+    store.put('tag','DEADBEEF',{patientId:pid,revoked:true});
+    expect((await lcd()).body).toEqual({state:'UNKNOWN_TAG'});
+  });
   it('rejects revoked and expired grants, and fails closed when audit cannot commit',async()=>{
     const {a,grant}=await access();
     db.exec("CREATE TRIGGER fail_receipt BEFORE INSERT ON platform_receipts BEGIN SELECT RAISE(ABORT,'audit failure'); END;");
