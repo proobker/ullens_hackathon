@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export const IdSchema = z.string().min(1).max(128);
 export const InstantSchema = z.string().datetime({ offset: true });
-export const ADDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const ADDateSchema = z.iso.date();
 
-export const ActorRoleSchema = z.enum(['patient', 'caregiver', 'clinician', 'admin']);
+export const ActorRoleSchema = z.enum(['patient', 'caregiver', 'clinician', 'paramedic', 'admin']);
 export type ActorRole = z.infer<typeof ActorRoleSchema>;
 
 export const DataModeSchema = z.enum(['synthetic_fixture', 'user_uploaded']);

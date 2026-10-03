@@ -10,6 +10,8 @@ import {
 import { classifyEvidence, derivePrescriptionView, validateSourceReference } from '@pran-rekha/domain';
 import { Repository } from './storage/repository.js';
 import { hashPassword } from './storage/seed.js';
+import { PlatformStore } from './platform/store.js';
+import { platformRouter } from './platform/routes.js';
 
 const COOKIE_NAME = 'pran_rekha_session';
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
@@ -48,6 +50,8 @@ function errorBody(code: 'INVALID_INPUT' | 'FORBIDDEN' | 'SOURCE_UNRESOLVED' | '
 export function createApp(options: AppOptions) {
   const app = express();
   const repository = new Repository(options.database);
+  const platform = new PlatformStore(options.database);
+  platform.seed();
   const clock = options.clock ?? (() => new Date());
   const secureCookies = options.secureCookies ?? process.env.NODE_ENV === 'production';
 
@@ -57,6 +61,17 @@ export function createApp(options: AppOptions) {
     response.locals.requestId = request.header('x-request-id')?.slice(0, 128) || randomUUID();
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+  });
+  const attempts = new Map<string, { count: number; until: number }>();
+  app.use((request, response, next) => {
+    if (['POST','PUT','PATCH','DELETE'].includes(request.method)) {
+      const origin = request.header('origin');
+      const allowed = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+      if (request.header('sec-fetch-site') === 'cross-site' || (origin && origin !== allowed)) {
+        response.status(403).json(errorBody('FORBIDDEN','Origin not allowed.',response.locals.requestId)); return;
+      }
+    }
     next();
   });
 
@@ -87,6 +102,12 @@ export function createApp(options: AppOptions) {
   }
 
   app.post('/api/session', (request, response: Response<unknown, Locals>) => {
+    const key = request.ip ?? 'local';
+    const attempt = attempts.get(key);
+    if (attempt && attempt.until > clock().getTime() && attempt.count >= 20) {
+      response.status(429).json(errorBody('FORBIDDEN','Too many attempts. Try later.',response.locals.requestId)); return;
+    }
+    attempts.set(key, {count: attempt && attempt.until > clock().getTime() ? attempt.count+1 : 1, until: clock().getTime()+60000});
     const parsed = SessionRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       response.status(400).json(errorBody('INVALID_INPUT', 'Credentials must contain only a username and password.', response.locals.requestId));
@@ -113,11 +134,20 @@ export function createApp(options: AppOptions) {
       path: '/'
     });
     response.status(201).json({
-      actor: { id: actor.id, displayName: actor.display_name, role: actor.role },
+      actor: { id: actor.id, displayName: actor.display_name, role: platform.staff(actor.id)?.role ?? actor.role },
       patientIds: repository.patientIdsForActor(actor.id),
       mode: 'synthetic_fixture'
     });
   });
+
+  app.get('/api/session', authenticate, (_request, response: Response<unknown, Locals>) => {
+    const actor=response.locals.actor!;
+    response.json({actor:{id:actor.id,displayName:actor.display_name,role:platform.staff(actor.id)?.role??actor.role},patientIds:repository.patientIdsForActor(actor.id),mode:'synthetic_fixture'});
+  });
+  app.use('/api/platform', (request,response,next)=>{
+    if(request.path==='/rfid/scans' && request.method==='POST') { next(); return; }
+    authenticate(request,response,next);
+  }, platformRouter(platform,clock));
 
   app.delete('/api/session', authenticate, (_request, response: Response<unknown, Locals>) => {
     if (response.locals.tokenHash) repository.deleteSession(response.locals.tokenHash);
