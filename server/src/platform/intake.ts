@@ -20,14 +20,15 @@ export function intakeRouter(store:PlatformStore,clock:()=>Date){
       if(bytes.subarray(0,5).toString()==='%PDF-'){
         if(/\/(JavaScript|JS|Launch|EmbeddedFiles|OpenAction|AA)\b/.test(bytes.toString('latin1')))throw new Error('INVALID_INPUT');
         const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs');
-        const pdf=await getDocument({data:new Uint8Array(bytes),isEvalSupported:false,useSystemFonts:false}).promise;
+        const task=getDocument({data:new Uint8Array(bytes),useSystemFonts:false});
+        const pdf=await task.promise;
         try{
           if(pdf.numPages>10)throw new Error('INVALID_INPUT');pages=[];
           for(let page=1;page<=pdf.numPages;page++){
             const p=await pdf.getPage(page);const content=await p.getTextContent();
             pages.push(content.items.map(item=>'str' in item?item.str:'').join(' '));
           }
-        }finally{await pdf.destroy();}
+        }finally{await task.destroy();}
         mime='application/pdf';
       }else{
         const png=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));

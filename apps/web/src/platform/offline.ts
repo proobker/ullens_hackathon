@@ -25,6 +25,19 @@ export async function unlock(phrase:string):Promise<Snapshot>{
   const key=await derive(phrase,saved.salt);
   const plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv:saved.iv},key,saved.encrypted);
   const snapshot=JSON.parse(new TextDecoder().decode(plaintext)) as Snapshot;
+  const revoked=await new Promise<boolean>((resolve,reject)=>{const r=db.transaction('vault').objectStore('vault').get('revoked:'+snapshot.id);r.onsuccess=()=>resolve(Boolean(r.result));r.onerror=()=>reject(r.error);});
+  if(revoked)throw new Error('Snapshot revoked.');
+  if(navigator.onLine){
+    let knownRevoked=false;
+    try{
+      const response=await fetch('/api/platform/offline/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshotId:snapshot.id})});
+      if(response.ok)knownRevoked=Boolean((await response.json()).revoked);
+    }catch{/* Offline freshness limits remain visible when the server cannot be reached. */}
+    if(knownRevoked){
+      await new Promise<void>((resolve,reject)=>{const tx=db.transaction('vault','readwrite');tx.objectStore('vault').put(true,'revoked:'+snapshot.id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});
+      throw new Error('Snapshot revoked.');
+    }
+  }
   const {signature,publicKey,...body}=snapshot;
   if(publicKey!==saved.publicKey||snapshot.deviceId!==saved.deviceId||Date.parse(snapshot.expiresAt)<=Date.now())throw new Error('Snapshot expired or binding invalid.');
   const pem=publicKey.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');

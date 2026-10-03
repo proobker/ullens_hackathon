@@ -19,9 +19,11 @@
     "demo:reset": "npm run reset --workspace @pran-rekha/server"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
     "@types/supertest": "^6.0.3",
     "concurrently": "^9.2.1",
+    "fake-indexeddb": "^6.2.5",
     "supertest": "^7.1.4",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
@@ -30,4 +32,3 @@
     "node": ">=24"
   }
 }
-

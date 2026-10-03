@@ -77,6 +77,10 @@ export class PlatformStore {
     const trusted=this.get<{publicKey:string}>('key','facility')!;
     return publicKey===trusted.publicKey && verify(null,Buffer.from(canonical(body)),trusted.publicKey,Buffer.from(signature,'base64'));
   }
+  verifyProfile(profile:Profile) {
+    if(profile.versions.some(v=>!this.verifyVersion(v)))return false;
+    return profile.entries.filter(e=>e.reviewed).every(entry=>profile.versions.some(v=>v.entries.some(signed=>canonical(signed)===canonical(entry))));
+  }
   seed() {
     if(this.get('profile','PR-9042-8819')) return;
     const keys=generateKeyPairSync('ed25519',{publicKeyEncoding:{type:'spki',format:'pem'},privateKeyEncoding:{type:'pkcs8',format:'pem'}});

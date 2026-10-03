@@ -8,6 +8,7 @@ import type { Alert, Card, Entry, PlatformProfile } from '@pran-rekha/contracts/
 import type { SessionResponse } from '@pran-rekha/contracts';
 import { api, labels, requestId, usePreferences } from './client';
 import { prepare, syncReceipts, unlock } from './offline';
+import { BreakGlass, RecordWorkflows } from './Workflows';
 
 type PortalName='patient'|'paramedic'|'hospital'|'lab';
 type Context={staff:{role:string;facility:string;unit:string;reader:string};patients:{id:string;name:string}[]};
@@ -198,6 +199,9 @@ export default function Portal({portal}:{portal:PortalName}) {
         <button onClick={()=>void run(async()=>{const snap=await unlock(phrase);setOfflineCard(snap.card);setPhrase('');if(session&&navigator.onLine)await flushOfflineReceipts().catch(()=>{});})}>Unlock saved snapshot</button>
         {offlineCard&&<><p>Offline snapshot from {offlineCard.generatedAt}; later changes and revocations may be unavailable.</p><p>{offlineCard.notice}</p><div className="entries">{renderEntries(offlineCard.entries)}</div></>}
       </section>}
+      {session&&isAllowed&&profile&&(portal==='patient'||portal==='lab')&&<RecordWorkflows patientId={profile.id} revision={profile.revision} onChange={refresh} clinician={portal==='lab'}/>}
+      {session&&isAllowed&&portal==='hospital'&&<BreakGlass hospital/>}
+      {session&&isAllowed&&portal==='paramedic'&&<BreakGlass link={link} purpose={purpose}/>}
       <footer>Nepali copy pending native-speaker review · BS conversion unavailable pending verified reference pairs</footer>
     </main>
     <Dialog.Root open={!!source} onOpenChange={open=>!open&&setSource(null)}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="dialog-content"><Dialog.Title>{t.source}</Dialog.Title><Dialog.Description>{source?.source} · {source?.date}</Dialog.Description><blockquote>{source?.excerpt}</blockquote><p>{source?.reviewed?'Clinician-authored demo evidence':'Attributed patient report'}</p><Dialog.Close>Close</Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>

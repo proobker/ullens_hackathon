@@ -2,7 +2,7 @@ import type { MedicationRecord, MedState, PrescriptionView } from '@pran-rekha/c
 export type LifecycleEvent={
   id:string;recordId:string;patientId:string;streamId:string;revision:number;effectiveDate:string;
   kind:'started'|'stopped'|'held'|'resumed'|'completed'|'status_confirmed'|'dose_changed'|'substituted'|'corrected'|'retracted';
-  status?:'documented_active'|'unknown';targetEventId?:string;replacementEventId?:string;replacementRecordId?:string;
+  status?:'documented_active'|'unknown'|undefined;targetEventId?:string|undefined;replacementEventId?:string|undefined;replacementRecordId?:string|undefined;
   source:string;actorId:string;recordedAt:string;
 };
 export function lifecycle(record:MedicationRecord,events:LifecycleEvent[],asOf:string):PrescriptionView {

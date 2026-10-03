@@ -28,7 +28,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
   function project(pid:string,actor:string,purpose:string,expiresAt:string) {
     const p=profile(pid);
     if(p.release.revoked) throw new Error('GRANT_REVOKED');
-    if(p.versions.some(v=>!store.verifyVersion(v))) throw new Error('SIGNATURE_INVALID');
+    if(!store.verifyProfile(p)) throw new Error('SIGNATURE_INVALID');
     const entries=p.entries.filter(e=>p.release.allowedEntryIds.includes(e.id));
     const receiptId=store.receipt(pid,actor,purpose,entries.map(e=>e.id),clock());
     return CardSchema.parse({patientId:pid,name:p.name,entries,notice:NOTICE,generatedAt:clock().toISOString(),expiresAt,receiptId});
@@ -69,7 +69,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
   });
   router.get('/profiles/:id',(req,res,next)=>{
     try {const s=res.locals.staff as Staff;const p=profile(String(req.params.id));if(!allowedFull(s,p.id))return unavailable();
-      if(p.versions.some(v=>!store.verifyVersion(v)))throw new Error('SIGNATURE_INVALID');
+      if(!store.verifyProfile(p))throw new Error('SIGNATURE_INVALID');
       res.json(PlatformProfileSchema.parse({...p,freshness:freshness(p.reviewDue,clock())}));
     }catch(e){next(e);}
   });
