@@ -15,5 +15,11 @@ it('proposes record categories for recognized lines',()=>{
 it('drops noise lines and keeps the original text for review',()=>{
   const c=toCandidates([{text:'  Tab  Amoxicillin 500mg BD ',confidence:91},{text:'~ .',confidence:12},{text:'Allergy: Penicillin',confidence:40}]);
   expect(c.map(x=>[x.original,x.kind,x.confidence])).toEqual([['Tab Amoxicillin 500mg BD','medication',91],['Allergy: Penicillin','allergy',40]]);
-  expect(c.every(x=>x.include&&x.text===x.original)).toBe(true);
+  expect(c.map(x=>x.text)).toEqual(['Tab Amoxicillin 500 mg BD','Allergy: Penicillin']);
+  expect(c.every(x=>x.include)).toBe(true);
+});
+it('keeps the raw OCR line but proposes the dictionary-corrected text and category',()=>{
+  const [c]=toCandidates([{text:'Amoxycilin 5OO rng 1-O-1',confidence:48}]);
+  expect(c).toMatchObject({original:'Amoxycilin 5OO rng 1-O-1',text:'Amoxicillin 500 mg 1-0-1',kind:'medication'});
+  expect(c!.corrections).toContain('Amoxycilin→Amoxicillin');
 });

@@ -107,6 +107,8 @@ test('lab reads a handwritten-style note locally, categorizes lines and signs af
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   const panel=page.locator('.handwritten');
   await expect(panel.getByRole('heading',{name:/Handwritten prescription/})).toBeVisible();
+  // Pin the bundled Tesseract engine so the test is offline and deterministic (TrOCR downloads ~64 MB on first use).
+  await page.evaluate(()=>localStorage.setItem('pran-ocr-engine','tesseract'));
   // Synthetic note drawn in-page (print-style, as Tesseract handles block handwriting far better than cursive).
   const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=900;c.height=260;const x=c.getContext('2d')!;x.fillStyle='#fff';x.fillRect(0,0,900,260);x.fillStyle='#111';x.font='40px sans-serif';
     x.fillText('Tab Amoxicillin 500mg BD',40,80);x.fillText('Allergy: Penicillin',40,150);x.fillText('BP 130/85 mmHg',40,220);return c.toDataURL('image/jpeg',0.95).split(',')[1]!;});

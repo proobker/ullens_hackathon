@@ -4,7 +4,8 @@ import { NotebookPen, Plus, TriangleAlert } from 'lucide-react';
 import type { Entry, HandwrittenUpdateRequest, PlatformProfile } from '@pran-rekha/contracts/platform';
 import { api, requestId } from './client';
 import { LOW_CONFIDENCE, toCandidates, type Candidate } from './categorize';
-import { OCR_ENGINE, recognize } from './ocr';
+import { correctLine } from './medical-lexicon';
+import { recognize, TROCR_ENGINE, type OcrProgress } from './ocr';
 import { PhotoCapture, type PhotoSource } from './PhotoCapture';
 
 const kinds:Entry['kind'][]=['medication','allergy','condition','vital','implant','blood_group'];
@@ -23,7 +24,7 @@ export function HandwrittenUpdate({patients,onChange}:{patients:{id:string;name:
   const [patientId,setPatientId]=useState(patients[0]?.id??''),[revision,setRevision]=useState<number|null>(null);
   const [image,setImage]=useState(''),[ocrText,setOcrText]=useState(''),[rows,setRows]=useState<Candidate[]>([]);
   const [date,setDate]=useState(new Date().toISOString().slice(0,10)),[compared,setCompared]=useState(false);
-  const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState(''),[captureKey,setCaptureKey]=useState(0);
+  const [engine,setEngine]=useState(TROCR_ENGINE),[busy,setBusy]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState(''),[captureKey,setCaptureKey]=useState(0);
 
   useEffect(()=>{if(!patients.some(p=>p.id===patientId))setPatientId(patients[0]?.id??'');},[patients]);
   async function loadRevision(id=patientId){if(!id){setRevision(null);return;}setRevision((await api<PlatformProfile>('platform/profiles/'+id)).revision);}
@@ -31,11 +32,12 @@ export function HandwrittenUpdate({patients,onChange}:{patients:{id:string;name:
   function reset(){setImage('');setOcrText('');setRows([]);setCompared(false);setCaptureKey(k=>k+1);}
 
   async function onImage(source:PhotoSource){
-    setBusy(true);setError('');setStatus('Reading handwriting locally… (first run loads the OCR model)');setOcrText('');setRows([]);setCompared(false);
+    setBusy(true);setError('');setStatus('Preparing the photo…');setOcrText('');setRows([]);setCompared(false);
+    const progress=(p:OcrProgress)=>setStatus(p.stage==='preparing'?'Finding lines of writing…':p.stage==='loading'?'Downloading the handwriting model '+p.progress+'% (first time only, about 64 MB)…':'Reading line '+p.line+' of '+p.total+' on this device…');
     try{
       setImage(toJpeg(source));
-      const result=await recognize(source);
-      setOcrText(result.text);
+      const result=await recognize(source,progress);
+      setOcrText(result.text);setEngine(result.engine);
       const candidates=toCandidates(result.lines);
       setRows(candidates);
       setStatus(candidates.length?candidates.length+' line(s) recognized. Correct each line and its category against the image.':'No text recognized. Add lines manually or retake a sharper, well-lit photo.');
@@ -50,7 +52,7 @@ export function HandwrittenUpdate({patients,onChange}:{patients:{id:string;name:
   async function submit(){
     setBusy(true);setError('');
     try{
-      const body:HandwrittenUpdateRequest={requestId:requestId(),expectedRevision:revision!,image,ocrText:ocrText.slice(0,8000),engine:OCR_ENGINE,
+      const body:HandwrittenUpdateRequest={requestId:requestId(),expectedRevision:revision!,image,ocrText:ocrText.slice(0,8000),engine,
         entries:included.map(r=>({kind:r.kind as HandwrittenUpdateRequest['entries'][number]['kind'],text:r.text.trim(),original:r.original,date}))};
       await api('platform/profiles/'+patientId+'/handwritten',body);
       reset();setStatus(body.entries.length+' entr'+(body.entries.length===1?'y':'ies')+' signed. Patient approval is required for emergency sharing.');
@@ -64,6 +66,7 @@ export function HandwrittenUpdate({patients,onChange}:{patients:{id:string;name:
     <p>Photograph or upload a handwritten note. Text is recognized on this device and sorted into categories; you correct every line before signing. The original image and raw OCR text are kept as the source.</p>
     {!patients.length?<p>No patients you can update yet. Hospital clinicians can update patients they registered.</p>:<>
       <label>Patient<select value={patientId} onChange={e=>{setPatientId(e.target.value);reset();setStatus('');}}>{patients.map(p=><option key={p.id} value={p.id}>{p.name} · {p.id}</option>)}</select></label>
+      <p className="ocr-tips">For best results: lay the note flat in good light, fill the frame with it, and photograph one note at a time.</p>
       <PhotoCapture key={captureKey} disabled={!patientId} busy={busy} alt="Handwritten note" showPreview={false} facing="environment" onImage={onImage} onError={setError}/>
       {status&&<p role="status">{status}</p>}
       {error&&<p role="alert" className="error">{error}</p>}
@@ -74,6 +77,8 @@ export function HandwrittenUpdate({patients,onChange}:{patients:{id:string;name:
             <input type="checkbox" checked={r.include} aria-label={'Include line: '+r.original} onChange={e=>update(r.id,{include:e.target.checked})}/>
             <div className="ocr-text">
               {r.original&&<small>OCR: {r.original}{r.confidence<LOW_CONFIDENCE&&<span className="low-confidence"><TriangleAlert size={12}/> low confidence</span>}</small>}
+              {!!r.corrections?.length&&<small className="ocr-corrections">Dictionary: {r.corrections.join(', ')}</small>}
+              {r.alternative&&<small>Other reading: <button type="button" className="link-button" title="Use this reading" onClick={()=>update(r.id,{text:correctLine(r.alternative!).text})}>{r.alternative}</button></small>}
               <input aria-label="Corrected text" value={r.text} onChange={e=>update(r.id,{text:e.target.value})}/>
             </div>
             <select aria-label="Category" value={r.kind??''} onChange={e=>update(r.id,{kind:(e.target.value||null) as Candidate['kind']})} className={r.include&&!r.kind?'needs-kind':''}>

@@ -144,6 +144,9 @@
 .ocr-text { display: grid; gap: 4px; }
 .ocr-text small { color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .low-confidence { display: inline-flex; align-items: center; gap: 3px; color: var(--amber); font-weight: 600; }
+.ocr-text small.ocr-corrections { color: var(--teal); }
+.ocr-tips { color: var(--muted); font-size: .9rem; }
+.platform button.link-button { display: inline; padding: 0; border: 0; background: none; color: var(--focus); font-weight: 500; text-decoration: underline; text-align: left; }
 .platform select.needs-kind { border-color: var(--amber); }
 .platform .ocr-review input[type='date'] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
 @media (max-width: 720px) { .ocr-layout { grid-template-columns: 1fr; } .ocr-original { position: static; } .ocr-row { grid-template-columns: auto minmax(0, 1fr); } .ocr-row select { grid-column: 2; } }
