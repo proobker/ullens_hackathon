@@ -11,6 +11,7 @@ import { browserDeviceId, prepareBrowserShell, prepare, syncReceipts, unlock } f
 import { BreakGlass, RecordWorkflows } from './Workflows';
 import { FaceLookup } from './FaceLookup';
 import { RegisterPatient } from './RegisterPatient';
+import { HandwrittenUpdate } from './HandwrittenUpdate';
 
 type PortalName='patient'|'paramedic'|'hospital'|'lab';
 type Context={staff:{role:string;facility:string;unit:string;reader:string};patients:{id:string;name:string}[]};
@@ -162,6 +163,7 @@ export default function Portal({portal}:{portal:PortalName}) {
         <section className="surface"><h2>Simulated revenue ledger</h2>{ledger.length?<ul className="receipts">{ledger.map(l=><li key={String(l.id)}>Checkup ${(Number(l.amountMinor)/100).toFixed(2)} · take-rate (8%) ${(Number(l.commissionMinor)/100).toFixed(2)}</li>)}</ul>:<p>No checkups signed yet.</p>}
           <p><strong>Total commission: ${(ledger.reduce((sum,l)=>sum+Number(l.commissionMinor),0)/100).toFixed(2)}</strong></p><p>Illustrative only. No payments are processed.</p></section>
         <section className="surface wide"><h2>Signed record history</h2><ul className="receipts">{profile.versions.map(v=><li key={v.id}>Version {v.revision} · {v.signer} · {v.signedAt} · review due {v.reviewDue.slice(0,10)}</li>)}</ul></section>
+        <HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>
       </div>}
 
       {portal==='paramedic'&&<div className="portal-grid">
@@ -182,7 +184,8 @@ export default function Portal({portal}:{portal:PortalName}) {
         {card&&<section className="surface wide"><h2>{card.name}</h2>{warnings(card)}<p>{card.notice}</p><div className="entries">{renderEntries(card.entries)}</div></section>}
       </div>}
 
-      {portal==='hospital'&&<RegisterPatient onRegistered={p=>setRegistered(r=>[...r,p])}/>}
+      {portal==='hospital'&&<RegisterPatient onRegistered={p=>{setRegistered(r=>[...r,p]);void refresh().catch(()=>{});}}/>}
+      {portal==='hospital'&&<HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>}
       {portal==='hospital'&&<FaceLookup patients={registered}/>}
       {portal==='hospital'&&<section className="surface board">
         <div className="board-heading"><h2>Incoming patients</h2><div className="header-right">

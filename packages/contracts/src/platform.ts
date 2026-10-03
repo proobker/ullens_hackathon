@@ -57,3 +57,12 @@ export const RegisterPatientSchema = z.object({
 export type RegisterPatientRequest = z.input<typeof RegisterPatientSchema>;
 export type RegisteredPatient = { patientId: string; name: string; locator: string; username: string };
 export type FaceGalleryEntry = { patientId: string; name: string; descriptor: number[] };
+export const HandwrittenUpdateSchema = MutationSchema.extend({
+  image: z.string().max(2_000_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/),
+  ocrText: z.string().max(8000), engine: z.string().min(1).max(100),
+  entries: z.array(z.object({
+    kind: EntrySchema.shape.kind.exclude(['report', 'donor', 'contact']), text: z.string().trim().min(1).max(2000),
+    original: z.string().max(2000), date: z.iso.date(),
+  }).strict()).min(1).max(50),
+}).strict();
+export type HandwrittenUpdateRequest = z.input<typeof HandwrittenUpdateSchema>;

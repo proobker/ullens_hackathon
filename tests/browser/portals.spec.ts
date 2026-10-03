@@ -101,3 +101,23 @@ test('theme defaults to light and persists the user choice across pages and relo
   await page.getByRole('button',{name:'Switch to light mode'}).click();
   expect(await bg()).toBe('rgb(248, 250, 252)');
 });
+test('lab reads a handwritten-style note locally, categorizes lines and signs after review',async({page})=>{
+  test.setTimeout(120000);
+  await page.goto('/lab');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  const panel=page.locator('.handwritten');
+  await expect(panel.getByRole('heading',{name:/Handwritten prescription/})).toBeVisible();
+  // Synthetic note drawn in-page (print-style, as Tesseract handles block handwriting far better than cursive).
+  const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=900;c.height=260;const x=c.getContext('2d')!;x.fillStyle='#fff';x.fillRect(0,0,900,260);x.fillStyle='#111';x.font='40px sans-serif';
+    x.fillText('Tab Amoxicillin 500mg BD',40,80);x.fillText('Allergy: Penicillin',40,150);x.fillText('BP 130/85 mmHg',40,220);return c.toDataURL('image/jpeg',0.95).split(',')[1]!;});
+  await panel.locator('input[type=file]').setInputFiles({name:'note.jpg',mimeType:'image/jpeg',buffer:Buffer.from(data,'base64')});
+  await expect(panel.getByText(/line\(s\) recognized/)).toBeVisible({timeout:90000});
+  const kinds=await panel.locator('.ocr-row select').evaluateAll(els=>els.map(e=>(e as HTMLSelectElement).value));
+  expect(kinds).toEqual(['medication','allergy','vital']);
+  const sign=panel.getByRole('button',{name:/Sign & commit 3 entries/});
+  await expect(sign).toBeDisabled();
+  await panel.getByLabel('I compared every included line with the handwritten original').check();
+  await sign.click();
+  await expect(panel.getByText('3 entries signed.')).toBeVisible();
+  await expect(page.locator('.entry h3').filter({hasText:'Penicillin'}).last()).toBeVisible();
+});

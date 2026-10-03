@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes, randomInt, randomUUID, sign } from 'node:crypto';
 import { z } from 'zod';
-import { CardSchema, DispatchRequestSchema, EntrySchema, GrantRequestSchema, PlatformProfileSchema, RegisterPatientSchema, ReleaseRequestSchema, ScanSchema, SignRequestSchema, type Alert } from '@pran-rekha/contracts/platform';
+import { CardSchema, DispatchRequestSchema, EntrySchema, GrantRequestSchema, HandwrittenUpdateSchema, PlatformProfileSchema, RegisterPatientSchema, ReleaseRequestSchema, ScanSchema, SignRequestSchema, type Alert } from '@pran-rekha/contracts/platform';
 import { canonical, digest, freshness, NOTICE, PlatformStore, sixMonths, type Profile, type Staff } from './store.js';
 import { hashPassword } from '../storage/seed.js';
 import { intakeRouter } from './intake.js';
@@ -12,6 +12,7 @@ import type { MedicationRecord } from '@pran-rekha/contracts';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
 type Linkage = {id:string;actor:string;patient:string;expiresAt:string};
 type Face = {patientId:string;descriptor:number[];photo:string;photoSha256:string;createdBy:string;createdAt:string};
+type HandwrittenSource = {id:string;patientId:string;image:string;sha256:string;ocrText:string;engine:string;actorId:string;at:string};
 type Reader = {id:string;tokenHash:string;revoked:boolean;lastSeen:string|null};
 const text=z.string().min(1).max(500);
 const mutation=z.object({requestId:text,expectedRevision:z.number().int().nonnegative()});
@@ -53,6 +54,14 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
     if(p.release.revoked||p.release.revision!==g.releaseRevision) throw new Error('GRANT_REVOKED');
     return g;
   }
+  // Signs clinician-confirmed entries into a new profile version; callers run inside store.mutate.
+  function commitSigned(s:Staff,pid:string,expectedRevision:number,entries:z.infer<typeof EntrySchema>[]) {
+    const p=profile(pid);if(p.revision!==expectedRevision)throw new Error('CONFLICT');
+    const version=store.signVersion({id:randomUUID(),patientId:pid,revision:p.revision+1,facility:s.facility,signer:s.id,signedAt:clock().toISOString(),reviewDue:sixMonths(clock()).toISOString(),entries});
+    p.entries.push(...entries);p.versions.push(version);p.revision++;p.reviewDue=version.reviewDue;
+    store.put('profile',pid,p);return version;
+  }
+  const signingClinician=(s:Staff,pid:string)=>s.role==='clinician'&&['lab-demo','hospital-demo'].includes(s.facility)&&allowedFull(s,pid);
   // Device endpoint accepts scan events only. It never returns linkage or records.
   router.post('/rfid/scans',(req,res,next)=>{
     try {
@@ -90,13 +99,35 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
       const s=res.locals.staff as Staff, pid=String(req.params.id), input=SignRequestSchema.parse(req.body);
       if(s.role!=='clinician'||s.facility!=='lab-demo'||!allowedFull(s,pid))return unavailable();
       res.json(store.mutate(s.id,input.requestId,{pid,...input},()=>{
-        const p=profile(pid);if(p.revision!==input.expectedRevision)throw new Error('CONFLICT');
-        const entries=input.entries.map(e=>({...e,id:randomUUID(),author:s.id,reviewed:true}));
-        const version=store.signVersion({id:randomUUID(),patientId:pid,revision:p.revision+1,facility:s.facility,signer:s.id,signedAt:clock().toISOString(),reviewDue:sixMonths(clock()).toISOString(),entries});
-        p.entries.push(...entries);p.versions.push(version);p.revision++;p.reviewDue=version.reviewDue;
-        store.put('profile',pid,p);store.put('ledger',version.id,{id:version.id,facility:s.facility,patientId:pid,amountMinor:5000,commissionMinor:400,currency:'USD',simulated:true,at:clock().toISOString()});
+        const version=commitSigned(s,pid,input.expectedRevision,input.entries.map(e=>({...e,id:randomUUID(),author:s.id,reviewed:true})));
+        store.put('ledger',version.id,{id:version.id,facility:s.facility,patientId:pid,amountMinor:5000,commissionMinor:400,currency:'USD',simulated:true,at:clock().toISOString()});
         return version;
       }));
+    }catch(e){next(e);}
+  });
+  // Handwritten prescription/card: local OCR candidates confirmed line by line by the clinician, original image retained.
+  router.post('/profiles/:id/handwritten',(req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff,pid=String(req.params.id);
+      if(!signingClinician(s,pid))return unavailable();
+      const input=HandwrittenUpdateSchema.parse(req.body);
+      if(jpegBytes(input.image).subarray(0,3).toString('hex')!=='ffd8ff')throw new Error('INVALID_INPUT');
+      res.json(store.mutate(s.id,input.requestId,{pid,...input,image:digest(input.image)},()=>{
+        const source:HandwrittenSource={id:randomUUID(),patientId:pid,image:input.image,sha256:digest(input.image),ocrText:input.ocrText,engine:input.engine,actorId:s.id,at:clock().toISOString()};
+        const entries=input.entries.map(e=>EntrySchema.parse({id:randomUUID(),kind:e.kind,text:e.text,date:e.date,source:'Handwritten note · OCR candidate confirmed by clinician',excerpt:e.original.trim()||e.text,author:s.id,reviewed:true}));
+        const version=commitSigned(s,pid,input.expectedRevision,entries);
+        store.put('handwritten-source',source.id,source);
+        for(const entry of entries)store.put('source-reference',entry.id,{handwrittenId:source.id,sha256:source.sha256,engine:source.engine,mode:'ocr_candidate_confirmed'});
+        store.receipt(pid,s.id,'Handwritten note signed',entries.map(e=>e.id),clock());
+        return {version,handwrittenId:source.id,entryIds:entries.map(e=>e.id)};
+      }));
+    }catch(e){next(e);}
+  });
+  router.get('/handwritten/:id/image',(req,res,next)=>{
+    try{
+      const s=res.locals.staff as Staff,src=store.get<HandwrittenSource>('handwritten-source',String(req.params.id));
+      if(!src||!(owner(s.id,src.patientId)||signingClinician(s,src.patientId)))return unavailable();
+      res.set({'Content-Type':'image/jpeg','Cache-Control':'no-store'}).send(jpegBytes(src.image));
     }catch(e){next(e);}
   });
   router.post('/profiles/:id/reports',(req,res,next)=>{
@@ -158,6 +189,8 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         const locator='opaque-'+randomUUID();
         store.put('profile',pid,{id:pid,name:input.name,dob:input.dob,locator,revision:1,entries,versions,reviewDue,release:{revision:1,allowedEntryIds:[],revoked:false}} satisfies Profile);
         if(input.tagUid)store.put('tag',input.tagUid,{patientId:pid,revoked:false});
+        // The registering clinician may update this patient's record (e.g. handwritten notes).
+        store.put('assignment','hospital:'+pid,{actor:s.id,patient:pid});
         // Demo deviation from the session-only face rule: photo and descriptor persist in the demo database (hospital-only).
         store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
         store.receipt(pid,s.id,'Hospital patient registration',[],clock());

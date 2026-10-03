@@ -130,3 +130,16 @@
 .face-candidates img { border-radius: 8px; object-fit: cover; border: 1px solid var(--line); }
 .face-counts { font-size: .85rem; }
 @media (max-width: 560px) { .register-result { grid-template-columns: 1fr; } }
+
+/* Handwritten note OCR review */
+.ocr-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; }
+.ocr-original { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; position: sticky; top: 64px; }
+.ocr-review { display: grid; gap: 10px; }
+.ocr-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(140px, auto); gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.ocr-row.excluded { opacity: .55; }
+.ocr-text { display: grid; gap: 4px; }
+.ocr-text small { color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.low-confidence { display: inline-flex; align-items: center; gap: 3px; color: var(--amber); font-weight: 600; }
+.platform select.needs-kind { border-color: var(--amber); }
+.platform .ocr-review input[type='date'] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+@media (max-width: 720px) { .ocr-layout { grid-template-columns: 1fr; } .ocr-original { position: static; } .ocr-row { grid-template-columns: auto minmax(0, 1fr); } .ocr-row select { grid-column: 2; } }

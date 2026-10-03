@@ -163,6 +163,35 @@ describe('combined platform',()=>{
       expect((await a.get(base+'/faces')).status).toBe(404);expect((await a.get(base+'/faces/'+reg.body.patientId+'/photo')).status).toBe(404);
     }
   });
+  it('signs clinician-confirmed handwritten OCR entries and keeps the original image',async()=>{
+    const lab=await actor('lab'),patient=await actor('siddharth');
+    const note={image:face.photo,ocrText:'Tab Amoxici11in 500mg BD\nAllergy: Penici1lin',engine:'tesseract.js@test/eng',entries:[
+      {kind:'medication',text:'Tab Amoxicillin 500mg BD',original:'Tab Amoxici11in 500mg BD',date:'2026-10-03'},
+      {kind:'allergy',text:'Allergy: Penicillin',original:'Allergy: Penici1lin',date:'2026-10-03'}]};
+    const revision=store.get<Profile>('profile',pid)!.revision;
+    expect((await lab.post(base+'/profiles/'+pid+'/handwritten').send({...note,requestId:'hw-stale',expectedRevision:revision+5})).status).toBe(409);
+    expect((await lab.post(base+'/profiles/'+pid+'/handwritten').send({...note,requestId:'hw-png',expectedRevision:revision,image:'data:image/jpeg;base64,'+Buffer.from('png?').toString('base64')})).status).toBe(400);
+    const signed=await lab.post(base+'/profiles/'+pid+'/handwritten').send({...note,requestId:'hw-1',expectedRevision:revision});
+    expect(signed.status).toBe(200);expect(store.verifyVersion(signed.body.version)).toBe(true);
+    const p=store.get<Profile>('profile',pid)!;expect(store.verifyProfile(p)).toBe(true);
+    const added=p.entries.filter(e=>signed.body.entryIds.includes(e.id));
+    expect(added.map(e=>[e.kind,e.text,e.excerpt,e.reviewed])).toEqual([['medication','Tab Amoxicillin 500mg BD','Tab Amoxici11in 500mg BD',true],['allergy','Allergy: Penicillin','Allergy: Penici1lin',true]]);
+    for(const a of [lab,patient]){const img=await a.get(base+'/handwritten/'+signed.body.handwrittenId+'/image');expect(img.status).toBe(200);expect(img.headers['content-type']).toBe('image/jpeg');}
+    for(const name of ['paramedic','hospital']){
+      const a=await actor(name);
+      expect((await a.post(base+'/profiles/'+pid+'/handwritten').send({...note,requestId:'hw-'+name,expectedRevision:p.revision})).status).toBe(404);
+      expect((await a.get(base+'/handwritten/'+signed.body.handwrittenId+'/image')).status).toBe(404);
+    }
+    expect((await patient.post(base+'/profiles/'+pid+'/handwritten').send({...note,requestId:'hw-patient',expectedRevision:p.revision})).status).toBe(404);
+  });
+  it('lets the registering hospital clinician sign handwritten notes for that patient only',async()=>{
+    const hospital=await actor('hospital');
+    const reg=await hospital.post(base+'/patients').send({requestId:'reg-hw',name:'Handwritten Test',dob:'1990-01-15',username:'hwtest',password:'synthetic-pass-1',...face});
+    const note={requestId:'hw-hosp',expectedRevision:1,image:face.photo,ocrText:'BP 130/85 mmHg',engine:'tesseract.js@test/eng',entries:[{kind:'vital',text:'BP 130/85 mmHg',original:'BP 130/85 mmHg',date:'2026-10-03'}]};
+    expect((await hospital.post(base+'/profiles/'+reg.body.patientId+'/handwritten').send(note)).status).toBe(200);
+    expect(store.get<Profile>('profile',reg.body.patientId)!.revision).toBe(2);
+    expect((await (await actor('approver')).post(base+'/profiles/'+reg.body.patientId+'/handwritten').send({...note,requestId:'hw-other',expectedRevision:2})).status).toBe(404);
+  });
   it('rejects cross-origin mutations and preserves calendar month boundaries',async()=>{
     expect((await request(app).post('/api/session').set('Origin','https://attacker.test').send({username:'lab',password:'pran-demo-lab'})).status).toBe(403);
     expect(sixMonths(new Date('2026-08-31T00:00:00Z')).toISOString()).toBe('2027-02-28T00:00:00.000Z');

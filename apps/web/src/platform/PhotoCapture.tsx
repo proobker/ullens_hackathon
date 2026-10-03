@@ -5,7 +5,7 @@ import { Camera, Upload } from 'lucide-react';
 export type PhotoSource=HTMLImageElement|HTMLCanvasElement;
 
 // Upload or camera capture with a local preview. Parents remount it (key) to clear the preview.
-export function PhotoCapture({disabled,busy=false,alt,onImage,onError}:{disabled:boolean;busy?:boolean;alt:string;onImage:(source:PhotoSource)=>Promise<void>;onError:(message:string)=>void}){
+export function PhotoCapture({disabled,busy=false,alt,onImage,onError,showPreview=true,facing='user'}:{disabled:boolean;busy?:boolean;alt:string;showPreview?:boolean;facing?:'user'|'environment';onImage:(source:PhotoSource)=>Promise<void>;onError:(message:string)=>void}){
   const [preview,setPreview]=useState(''),[camera,setCamera]=useState(false);
   const video=useRef<HTMLVideoElement>(null),stream=useRef<MediaStream|null>(null),previewRef=useRef('');
   previewRef.current=preview;
@@ -29,7 +29,7 @@ export function PhotoCapture({disabled,busy=false,alt,onImage,onError}:{disabled
   }
   async function startCamera(){
     try{
-      stream.current=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+      stream.current=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing}});
       setCamera(true);
       if(video.current){video.current.srcObject=stream.current;await video.current.play();}
     }catch{onError('Camera unavailable or permission denied. Upload an image instead.');stopCamera();}
@@ -46,13 +46,13 @@ export function PhotoCapture({disabled,busy=false,alt,onImage,onError}:{disabled
 
   return <>
     <div className="face-inputs">
-      <label className="file-button"><Upload size={16}/> Upload image<input type="file" accept="image/*" capture="user" disabled={disabled||busy} onChange={e=>{void onFile(e.target.files?.[0]);e.target.value='';}}/></label>
+      <label className="file-button"><Upload size={16}/> Upload image<input type="file" accept="image/*" capture={facing} disabled={disabled||busy} onChange={e=>{void onFile(e.target.files?.[0]);e.target.value='';}}/></label>
       {!camera?<button type="button" disabled={disabled||busy} onClick={()=>void startCamera()}><Camera size={16}/> Use camera</button>
         :<><button type="button" className="primary" disabled={busy} onClick={()=>void capture()}>Capture</button><button type="button" onClick={stopCamera}>Cancel</button></>}
     </div>
     <div className="face-stage">
       <video ref={video} className="face-preview" playsInline muted hidden={!camera}/>
-      {!camera&&preview&&<img className="face-preview" src={preview} alt={alt}/>}
+      {!camera&&showPreview&&preview&&<img className="face-preview" src={preview} alt={alt}/>}
     </div>
   </>;
 }

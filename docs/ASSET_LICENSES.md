@@ -15,3 +15,18 @@
 | face_recognition_model-weights_manifest.json | cbaffa501b0b9275a12b63357a6843e7e30c054e1c9151e1a5f879b26e32986b |
 
 Candidate generation only: no liveness, anti-spoofing, population accuracy or demographic performance is claimed.
+
+## Handwriting / text OCR
+
+- Packages: `tesseract.js` 7.0.0 and `tesseract.js-core` 7.0.0 (Apache-2.0); `@tesseract.js-data/eng` 1.0.0 (`4.0.0_best_int` English LSTM model, Apache-2.0).
+- Copied into `apps/web/public/tesseract/` and served locally (no CDN). OCR runs in the browser; results are candidates confirmed line by line by a clinician.
+
+| File | SHA-256 |
+| --- | --- |
+| worker.min.js | 576b7df7e3393e137e51849357c9adb53fe7ac1bb69bfa06cf3d61520f182c6d |
+| tesseract-core-lstm.wasm.js | eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680 |
+| tesseract-core-simd-lstm.wasm.js | c58b46a4c796c0b8afccf77591d5b875b6896b45d402bbce8caa6f5362447b38 |
+| tesseract-core-relaxedsimd-lstm.wasm.js | 861a536cf9ef8e63cb644d57bab39c388f37f7d6b6f60024b741c5f6b39a59b3 |
+| lang/eng.traineddata.gz | 45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91 |
+
+Accuracy on real handwriting is limited (block capitals work best; cursive often fails). No accuracy claim is made.
