@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 5173",
+    "dev:https": "next dev -p 5173 --hostname 0.0.0.0 --experimental-https",
     "start": "next start -p 5173",
+    "start:lan": "next start -p 5173 --hostname 0.0.0.0",
     "build": "next build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@fontsource/noto-sans-devanagari": "^5.2.0",

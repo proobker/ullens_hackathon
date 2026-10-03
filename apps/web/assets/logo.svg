@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Placeholder mark; replace this file with the real logo and run `npm run icons`. -->
+  <rect width="512" height="512" rx="112" fill="#0d9488"/>
+  <path d="M96 272h88l36-88 56 176 40-120 24 32h76" fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

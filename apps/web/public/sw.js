@@ -1,5 +1,5 @@
-const CACHE='pran-shell-v3';
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(['/offline.html']))));
+const CACHE='pran-shell-v4';
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(['/offline.html','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png']))));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',event=>{
   const url=new URL(event.request.url);

@@ -24,6 +24,22 @@ Open `http://localhost:5173` and use the prefilled synthetic patient credentials
 
 The clinician fixture (`demo.clinician` / `pran-demo-clinician`) is deliberately unable to read the patient record because G0 does not implement emergency grants.
 
+## Install on a phone (PWA)
+
+The web app is installable: a manifest, icons, and the service worker turn it into a full-screen home-screen app. Phones only allow the camera, service worker, and install prompt over HTTPS, so expose the production build through a tunnel:
+
+```powershell
+rtk npm run build
+rtk npm run start
+npx cloudflared tunnel --url http://localhost:5173
+```
+
+Open the printed `https://…trycloudflare.com` URL on the phone, then use **Install app** (Android Chrome) or **Share → Add to Home Screen** (iOS Safari). The API stays on the laptop; Next proxies `/api` to it.
+
+For a USB-connected Android phone, `chrome://inspect` → Port forwarding `5173 → localhost:5173` also works, because `localhost` counts as secure. `npm run dev:https --workspace @pran-rekha/web` serves a self-signed certificate on the LAN, but phones won't trust it, so the camera works only after accepting the warning and the service worker won't register.
+
+To change the icon, replace `apps/web/assets/logo.svg` (or add `logo.png`, square, ideally 1024px) and run `rtk npm run icons --workspace @pran-rekha/web`.
+
 ## Verification
 
 ```powershell
