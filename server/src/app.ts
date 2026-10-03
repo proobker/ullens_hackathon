@@ -69,8 +69,9 @@ export function createApp(options: AppOptions) {
   app.use((request, response, next) => {
     if (['POST','PUT','PATCH','DELETE'].includes(request.method)) {
       const origin = request.header('origin');
-      const allowed = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
-      if (request.header('sec-fetch-site') === 'cross-site' || (origin && origin !== allowed)) {
+      // Comma-separated so a phone tunnel origin can be allowed alongside localhost.
+      const allowed = (process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173').split(',').map(value => value.trim());
+      if (request.header('sec-fetch-site') === 'cross-site' || (origin && !allowed.includes(origin))) {
         response.status(403).json(errorBody('FORBIDDEN','Origin not allowed.',response.locals.requestId)); return;
       }
     }

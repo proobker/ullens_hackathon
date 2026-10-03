@@ -41,6 +41,19 @@ describe('authenticated API boundary', () => {
     return agent;
   }
 
+  it('accepts any origin listed in PUBLIC_ORIGIN and rejects others', async () => {
+    const previous = process.env.PUBLIC_ORIGIN;
+    process.env.PUBLIC_ORIGIN = 'http://localhost:5173, https://demo.trycloudflare.com';
+    try {
+      const tunnel = await request(app).post('/api/session').set('Origin', 'https://demo.trycloudflare.com').send(DEMO_CREDENTIALS.patient);
+      expect(tunnel.status).toBe(201);
+      const other = await request(app).post('/api/session').set('Origin', 'https://evil.example').send(DEMO_CREDENTIALS.patient);
+      expect(other.status).toBe(403);
+    } finally {
+      if (previous === undefined) delete process.env.PUBLIC_ORIGIN; else process.env.PUBLIC_ORIGIN = previous;
+    }
+  });
+
   it('returns the source-linked timeline and derived prescription to the bound patient', async () => {
     const agent = await patientAgent();
     const timeline = await agent.get(`/api/patients/${PRIMARY_PATIENT_ID}/timeline`);
