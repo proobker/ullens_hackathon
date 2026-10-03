@@ -6,6 +6,7 @@ import {
   type PrescriptionView,
   type SourceRef
 } from '@pran-rekha/contracts';
+export { lifecycle, type LifecycleEvent } from './lifecycle.js';
 
 export type StoredSource = {
   id: string;

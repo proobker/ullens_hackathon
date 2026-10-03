@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { CardSchema, DispatchRequestSchema, EntrySchema, GrantRequestSchema, PlatformProfileSchema, ReleaseRequestSchema, ScanSchema, SignRequestSchema, type Alert } from '@pran-rekha/contracts/platform';
 import { canonical, digest, freshness, NOTICE, PlatformStore, sixMonths, type Profile, type Staff } from './store.js';
 import { intakeRouter } from './intake.js';
+import { operationsRouter } from './operations.js';
+import { medicationsRouter } from './medications.js';
 type Grant = {id:string;actor:string;patient:string;deviceId:string;releaseRevision:number;expiresAt:string;purpose:string};
 type Linkage = {id:string;actor:string;patient:string;expiresAt:string};
 type Reader = {id:string;tokenHash:string;revoked:boolean;lastSeen:string|null};
@@ -59,6 +61,8 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
     next();
   });
   router.use(intakeRouter(store,clock));
+  router.use(operationsRouter(store,clock));
+  router.use(medicationsRouter(store,clock));
   router.get('/context',(_req,res)=>{
     const s=res.locals.staff as Staff;
     res.json({staff:s,patients:store.all<Profile>('profile').filter(p=>allowedFull(s,p.id)).map(p=>({id:p.id,name:p.name})),destinations:[{id:'hospital-demo',name:'Pran Rekha Demonstration Hospital'}]});
