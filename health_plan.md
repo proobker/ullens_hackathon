@@ -1,4 +1,4 @@
-ko# Arogya Kosh — Patient records and emergency access
+# Pran Rekha — Patient records and emergency access
 
 ## Hackathon build specification and agent runbook
 
@@ -26,7 +26,7 @@ The memorable interaction is a face scan that suggests a locally enrolled candid
 
 ### 1.1 Name and audience
 
-Working name: **Arogya Kosh / आरोग्य कोष**. Confirm native-speaker wording and name availability before public branding. Alternatives: Jeevan Patra and Health Passport Nepal. No government affiliation is implied.
+Working name: **Pran Rekha**. Confirm native-speaker wording, any future native-script rendering, and name availability before public branding. No government affiliation is implied.
 
 Primary users are patients and their chosen caregivers. The second interface serves a clinician at an enrolled demonstration clinic. Patient, caregiver, clinician, and administrator are distinct actors; selecting a UI tab does not grant a role.
 

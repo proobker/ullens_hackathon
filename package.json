@@ -1,0 +1,33 @@
+{
+  "name": "pran-rekha",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/contracts",
+    "packages/domain",
+    "server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev --workspace @pran-rekha/server\" \"npm run dev --workspace @pran-rekha/web\"",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo:seed": "npm run seed --workspace @pran-rekha/server",
+    "demo:reset": "npm run reset --workspace @pran-rekha/server"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^6.0.3",
+    "concurrently": "^9.2.1",
+    "supertest": "^7.1.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
+
