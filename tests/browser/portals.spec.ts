@@ -44,3 +44,25 @@ test('hospital face lookup stays disabled until consent',async({page})=>{
   await page.getByLabel('Consent to session-only face candidate matching').check();
   await expect(page.getByRole('button',{name:'Use camera'})).toBeEnabled({timeout:30000});
 });
+test('hospital registers a patient who can then sign in to the patient portal',async({page})=>{
+  const username='pw'+Date.now().toString(36);
+  await page.goto('/hospital');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await page.getByLabel('Full name').fill('Test Patient');
+  await page.getByLabel('Date of birth').fill('1990-01-15');
+  await page.getByLabel('Blood group').selectOption('A+');
+  await page.getByLabel('Patient username').fill(username);
+  await page.getByLabel('Initial password').fill('synthetic-pass-1');
+  await page.getByLabel(/Synthetic demonstration data only/).check();
+  await page.getByRole('button',{name:'Register patient'}).click();
+  const result=page.locator('.register-result');
+  await expect(result.getByText(/^PR-\d{4}-\d{4}$/)).toBeVisible();
+  const pid=await result.locator('.pass-id').innerText();
+  await page.getByRole('button',{name:/Sign out/}).click();
+  await page.goto('/patient');
+  await page.getByLabel('Username').fill(username);
+  await page.getByLabel('Password').fill('synthetic-pass-1');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page.getByText('Test Patient',{exact:true})).toBeVisible();
+  await expect(page.getByText(pid,{exact:true})).toBeVisible();
+});
