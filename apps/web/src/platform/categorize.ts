@@ -1,4 +1,5 @@
 import type { Entry } from '@pran-rekha/contracts/platform';
+import { correctLine } from './medical-lexicon';
 // Keyword rules that propose a record category for one recognized line. Order matters: first match wins.
 // null means uncategorized; the clinician must choose before signing.
 const rules:[Entry['kind'],RegExp][]=[
@@ -13,10 +14,11 @@ export function categorize(line:string):Entry['kind']|null{
   for(const [kind,re] of rules)if(re.test(line))return kind;
   return null;
 }
-export type Candidate={id:string;original:string;text:string;kind:Entry['kind']|null;confidence:number;include:boolean};
+// original = raw OCR line (kept as the signed excerpt); text = lexicon-corrected, editable by the clinician.
+export type Candidate={id:string;original:string;text:string;kind:Entry['kind']|null;confidence:number;include:boolean;corrections?:string[];alternative?:string};
 export const LOW_CONFIDENCE=60;
-export function toCandidates(lines:{text:string;confidence:number}[]):Candidate[]{
-  return lines.map(l=>l.text.replace(/\s+/g,' ').trim()).map((text,i)=>({text,confidence:lines[i]!.confidence}))
+export function toCandidates(lines:{text:string;confidence:number;alternative?:string}[]):Candidate[]{
+  return lines.map(l=>({...l,text:l.text.replace(/\s+/g,' ').trim()}))
     .filter(l=>l.text.replace(/[^\p{L}\p{N}]/gu,'').length>=3)
-    .map((l,i)=>({id:'line-'+i,original:l.text,text:l.text,kind:categorize(l.text),confidence:l.confidence,include:true}));
+    .map((l,i)=>{const fixed=correctLine(l.text);return {id:'line-'+i,original:l.text,text:fixed.text,kind:categorize(fixed.text),confidence:l.confidence,include:true,corrections:fixed.changed,...(l.alternative?{alternative:l.alternative}:{})};});
 }
