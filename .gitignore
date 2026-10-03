@@ -4,4 +4,8 @@ dist/
 .env
 coverage/
 *.log
+.next/
+*.tsbuildinfo
+firmware/**/secrets.h
+firmware/**/.pio/
 
