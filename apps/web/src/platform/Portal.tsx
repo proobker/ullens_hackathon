@@ -165,6 +165,7 @@ export default function Portal({portal}:{portal:PortalName}) {
         <section className="surface"><h2>Simulated revenue ledger</h2>{ledger.length?<ul className="receipts">{ledger.map(l=><li key={String(l.id)}>Checkup ${(Number(l.amountMinor)/100).toFixed(2)} · take-rate (8%) ${(Number(l.commissionMinor)/100).toFixed(2)}</li>)}</ul>:<p>No checkups signed yet.</p>}
           <p><strong>Total commission: ${(ledger.reduce((sum,l)=>sum+Number(l.commissionMinor),0)/100).toFixed(2)}</strong></p><p>Illustrative only. No payments are processed.</p></section>
         <section className="surface wide"><h2>Signed record history</h2><ul className="receipts">{profile.versions.map(v=><li key={v.id}>Version {v.revision} · {v.signer} · {v.signedAt} · review due {v.reviewDue.slice(0,10)}</li>)}</ul></section>
+        <section className="surface wide"><h2>Patient record entries</h2><div className="entries">{renderEntries(profile.entries)}</div></section>
         <HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>
       </div>}
 
