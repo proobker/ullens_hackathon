@@ -11,3 +11,4 @@ firmware/**/.pio/
 test-results/
 playwright-report/
 conv/
+presentation/

@@ -61,11 +61,13 @@ test('hospital registers a patient who can then sign in to the patient portal',a
   await page.getByLabel('Patient username').fill(username);
   await page.getByLabel('Initial password').fill('synthetic-pass-1');
   await page.getByLabel(/Synthetic demonstration data only/).check();
-  await page.getByLabel(/consents to storing this face photo/).check();
   const register=page.getByRole('button',{name:'Register patient'});
-  await expect(register).toBeDisabled();
+  // A face photo is optional and may be enrolled later.
+  await expect(register).toBeEnabled();
   await page.locator('.register-photo input[type=file]').setInputFiles(await faceCrop(page));
   await expect(page.getByText('One face detected.',{exact:false})).toBeVisible({timeout:60000});
+  await expect(register).toBeDisabled();
+  await page.getByLabel(/consents to storing this face photo/).check();
   await expect(register).toBeEnabled();
   await register.click();
   const result=page.locator('.register-result');
