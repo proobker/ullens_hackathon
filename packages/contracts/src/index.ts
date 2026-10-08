@@ -82,52 +82,6 @@ export const SourceRefSchema = z.discriminatedUnion('kind', [
 ]);
 export type SourceRef = z.infer<typeof SourceRefSchema>;
 
-export const ClaimValueSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('blood_group'), text: z.string().min(1) }).strict(),
-  z.object({ kind: z.literal('allergy'), substanceText: z.string().min(1), reactionText: z.string().min(1).nullable() }).strict(),
-  z.object({ kind: z.literal('condition'), text: z.string().min(1) }).strict(),
-  z.object({ kind: z.literal('procedure'), text: z.string().min(1) }).strict(),
-  z.object({ kind: z.literal('immunization'), text: z.string().min(1) }).strict(),
-  z.object({
-    kind: z.literal('lab_result'),
-    testText: z.string().min(1),
-    valueText: z.string().min(1),
-    unitText: z.string().min(1).nullable(),
-    referenceRangeText: z.string().min(1).nullable()
-  }).strict(),
-  z.object({
-    kind: z.literal('contact'),
-    name: z.string().min(1),
-    relationshipText: z.string().min(1),
-    contactText: z.string().min(1)
-  }).strict()
-]);
-
-export const OriginSchema = z.object({
-  originGroupId: IdSchema,
-  statedOrganisation: z.string().min(1).nullable(),
-  organisationId: IdSchema.nullable(),
-  submitterId: IdSchema,
-  issuerStatus: z.enum(['as_stated', 'demo_verified']),
-  independence: z.enum(['unknown', 'reviewed_independent', 'copied']),
-  derivedFromSourceIds: z.array(IdSchema)
-}).strict();
-
-export const ClaimSchema = z.object({
-  id: IdSchema,
-  patientId: IdSchema,
-  value: ClaimValueSchema,
-  clinicalDate: ClinicalDateSchema,
-  recordedAt: InstantSchema,
-  sourceRefs: z.array(SourceRefSchema).min(1),
-  origin: OriginSchema,
-  mode: DataModeSchema,
-  extraction: z.enum(['manual', 'ocr_candidate', 'model_candidate']),
-  confirmation: z.object({ actorId: IdSchema, at: InstantSchema, sourceVersion: z.number().int().positive() }).strict(),
-  supersedesClaimId: IdSchema.nullable()
-}).strict();
-export type Claim = z.infer<typeof ClaimSchema>;
-
 export const DrugRefSchema = z.object({
   rawText: z.string().min(1),
   genericName: z.string().min(1).nullable(),
@@ -159,31 +113,6 @@ export const MedicationRecordSchema = z.object({
 }).strict();
 export type MedicationRecord = z.infer<typeof MedicationRecordSchema>;
 
-export const MedicationEventSchema = z.object({
-  id: IdSchema,
-  patientId: IdSchema,
-  prescriptionStreamId: IdSchema,
-  recordId: IdSchema,
-  kind: z.enum(['started', 'stopped', 'held', 'resumed', 'completed', 'status_confirmed']),
-  confirmedState: z.enum(['documented_active', 'unknown']).nullable(),
-  effectiveDate: ClinicalDateSchema,
-  recordedAt: InstantSchema,
-  actorId: IdSchema,
-  actorRole: ActorRoleSchema,
-  authority: z.enum(['prescription_document', 'clinician_attestation']),
-  sourceRefs: z.array(SourceRefSchema).min(1),
-  revision: z.number().int().positive(),
-  requestId: IdSchema
-}).strict().superRefine((value, context) => {
-  if (value.kind === 'status_confirmed' && value.confirmedState === null) {
-    context.addIssue({ code: 'custom', message: 'Status confirmation requires a state.' });
-  }
-  if (value.kind !== 'status_confirmed' && value.confirmedState !== null) {
-    context.addIssue({ code: 'custom', message: 'Only status confirmation may carry a state.' });
-  }
-});
-export type MedicationEvent = z.infer<typeof MedicationEventSchema>;
-
 export const MedStateSchema = z.enum([
   'documented_active', 'unknown', 'held', 'stopped', 'completed', 'course_end_passed', 'superseded', 'conflict'
 ]);
@@ -205,14 +134,9 @@ export const PrescriptionViewSchema = z.object({
 }).strict();
 export type PrescriptionView = z.infer<typeof PrescriptionViewSchema>;
 
-export const EvidenceLabelSchema = z.enum([
-  'CONFLICT', 'HISTORICAL_OR_HELD', 'CONTEXT_INCOMPLETE', 'CORROBORATED_RECORD', 'RECORDED_CLAIM'
-]);
-export type EvidenceLabel = z.infer<typeof EvidenceLabelSchema>;
-
 export const ApiErrorSchema = z.object({
   error: z.object({
-    code: z.enum(['INVALID_INPUT', 'FORBIDDEN', 'SOURCE_UNRESOLVED', 'PATIENT_MISMATCH', 'CONFLICT']),
+    code: z.enum(['INVALID_INPUT', 'FORBIDDEN', 'CONFLICT']),
     message: z.string(),
     retryable: z.boolean()
   }).strict(),
@@ -226,25 +150,5 @@ export const SessionResponseSchema = z.object({
   mode: z.literal('synthetic_fixture')
 }).strict();
 
-export const TimelineResponseSchema = z.object({
-  patient: z.object({ id: IdSchema, displayName: z.string(), alternateName: z.string().nullable() }).strict(),
-  claims: z.array(ClaimSchema),
-  evidenceLabels: z.record(IdSchema, EvidenceLabelSchema),
-  mode: z.literal('synthetic_fixture')
-}).strict();
-
-export const PrescriptionsResponseSchema = z.object({
-  prescriptions: z.array(PrescriptionViewSchema),
-  mode: z.literal('synthetic_fixture')
-}).strict();
-
-export const DocumentPreviewResponseSchema = z.object({
-  document: z.object({ id: IdSchema, version: z.number().int().positive(), title: z.string(), content: z.string(), sha256: z.string() }).strict(),
-  mode: z.literal('synthetic_fixture')
-}).strict();
-
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
-export type TimelineResponse = z.infer<typeof TimelineResponseSchema>;
-export type PrescriptionsResponse = z.infer<typeof PrescriptionsResponseSchema>;
-export type DocumentPreviewResponse = z.infer<typeof DocumentPreviewResponseSchema>;
 

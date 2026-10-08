@@ -1,4 +1,4 @@
-// Session-local face candidate matcher (health_plan §5.2). Runs entirely in the browser;
+// Session-local face candidate matcher. Runs entirely in the browser;
 // images and descriptors are never sent to the API or persisted.
 export type Enrolled={handle:string;label:string;patientId:string;descriptor:Float32Array};
 export type Candidate={handle:string;label:string;patientId:string};

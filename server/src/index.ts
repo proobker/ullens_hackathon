@@ -6,10 +6,9 @@ import { seedDatabase } from './storage/seed.js';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const databasePath = resolve(workspaceRoot, process.env.DATABASE_PATH ?? '.data/pran-rekha-demo.sqlite');
-const fixtureDirectory = resolve(workspaceRoot, process.env.PRIVATE_DOCUMENT_PATH ?? 'fixtures/documents');
 const database = openDatabase({ databasePath });
 const count = database.prepare('SELECT COUNT(*) AS count FROM patients').get() as { count: number };
-if (count.count === 0) seedDatabase(database, fixtureDirectory);
+if (count.count === 0) seedDatabase(database);
 
 const port = Number(process.env.PORT ?? 4100);
 const app = createApp({ database });

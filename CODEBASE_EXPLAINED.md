@@ -148,9 +148,8 @@ The contracts define:
 
 - IDs, timestamps, dates, roles, and demo-data modes;
 - exact source pointers into text, images, or attestations;
-- claims such as allergies, conditions, procedures, lab results, and contacts;
-- medication records and medication events;
-- evidence labels and API error shapes;
+- medication records and prescription views;
+- session and API error shapes;
 - signed clinical entries and profile versions;
 - RFID scans, grants, emergency cards, dispatch alerts, registration, faces, and handwritten updates.
 
@@ -166,30 +165,7 @@ Important validation examples:
 
 ## The judge: domain logic
 
-`packages/domain` contains pure rules that do not know about web pages or databases.
-
-### Source checking
-
-`validateSourceReference` checks that a claim points to:
-
-- the correct patient;
-- the exact document ID and version;
-- the exact SHA-256 fingerprint;
-- a real page and valid text range.
-
-This is like checking that a quotation really came from the claimed edition and page of a book.
-
-### Evidence labels
-
-`classifyEvidence` follows a cautious order:
-
-1. Unauthorized information is hidden.
-2. A broken source link is an error.
-3. Conflicting evidence is labeled `CONFLICT`.
-4. Old, stopped, held, or superseded medicine is labeled historical/held.
-5. Missing context is labeled incomplete.
-6. Two reviewed independent sources can be called corroborated.
-7. Otherwise it is simply a recorded claim.
+`packages/domain` contains pure rules that do not know about web pages or databases. Today that is the medication `lifecycle`.
 
 ### Medication state
 
@@ -202,10 +178,7 @@ The code deliberately distinguishes:
 - a passed course end from proof that a person stopped;
 - two contradictory same-day instructions from a trustworthy final answer.
 
-There are currently two medication derivation paths:
-
-- `derivePrescriptionView` serves the older G0 timeline API.
-- `lifecycle` serves the newer multi-portal platform and additionally supports corrections, retractions, dose changes, substitutions, and stricter event linking.
+`lifecycle` derives the current state and supports corrections, retractions, dose changes, substitutions, and strict event linking.
 
 ## The server
 
@@ -258,8 +231,6 @@ This prevents a shaky phone connection from creating two bookings, two records, 
 | Group | What it does |
 |---|---|
 | `/api/session` | Sign in, inspect the current session, or sign out |
-| `/api/patients/...` | Serve the older source-linked timeline and prescription view |
-| `/api/documents/.../preview` | Serve an authorized exact source version |
 | `/api/platform/context` | Return server-derived role and visible patient list |
 | `/api/platform/profiles/...` | Read profiles; sign, release, revoke, report, book, snapshot, upload, or add medicine |
 | `/api/platform/rfid/...` | Accept authenticated device scans, poll reader state, and briefly display an approved card |
@@ -274,18 +245,9 @@ This prevents a shaky phone connection from creating two bookings, two records, 
 
 The project uses Node 24's built-in SQLite module with foreign keys and write-ahead logging.
 
-The older G0 slice uses normal relational tables:
+Login uses normal relational tables: `patients`, `actors`, `actor_patient_bindings`, and `sessions`. (The initial migration also creates `documents`, `claims`, `medications`, and `medication_events` from an earlier prototype; they are now left empty.)
 
-- `patients`
-- `actors`
-- `actor_patient_bindings`
-- `sessions`
-- `documents`
-- `claims`
-- `medications`
-- `medication_events`
-
-The newer platform adds:
+The platform adds:
 
 - `portal_roles` for staff role and location;
 - `platform_objects`, a general box holding JSON objects by `kind` and `id`;
@@ -296,14 +258,9 @@ This hybrid design is quick for a hackathon, but a production system would norma
 
 Transactions use `BEGIN IMMEDIATE`, then either commit everything or roll everything back. It is the database version of “all puzzle pieces go into the box, or none do.”
 
-## The two demo worlds
+## Demo data
 
-The repository contains two connected but different demonstrations:
-
-1. The older G0 API is seeded with Maya Shrestha, an exact allergy quotation, and a metformin prescription. `apps/web/src/App.tsx` is its React UI, but it is not mounted by the current Next.js routes.
-2. The current portal UI is seeded by `PlatformStore` with Siddharth Raj Sharma plus patient, paramedic, hospital, lab, approver, and admin accounts.
-
-The current Next.js routes use the second world. The older endpoints and tests still exist. This also explains why parts of `readme.md` describe an earlier feature set and call the frontend “React and Vite” even though the active app is Next.js 16.
+`seedDatabase` creates two login-only fixture actors (Maya Shrestha and a clinician). The portal UI is seeded by `PlatformStore` with Siddharth Raj Sharma plus patient, paramedic, hospital, lab, approver, and admin accounts.
 
 ## Document intake and handwriting OCR
 
@@ -436,20 +393,15 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 | `tsconfig.base.json` | Enables strict TypeScript safety rules for every workspace |
 | `vitest.config.ts` | Runs Node-based unit and integration tests |
 | `playwright.config.ts` | Runs browser tests against a disposable SQLite database |
-| `readme.md` | Quick-start guide; some workspace/feature wording reflects the older G0 stage |
-| `health_plan.md` | Detailed product, safety, privacy, and implementation plan |
-| `pranrekha_system_specification.txt` | Original full-stack product specification |
-| `plans.md` | Combined delivery decisions and stage checklist |
-| `fixtures/FIXTURE_MANIFEST.md` | Describes frozen fake fixtures |
-| `fixtures/documents/synthetic-discharge.txt` | Exact fake document used by source-link tests |
+| `readme.md` | Quick-start guide |
 
 ### Shared packages
 
 | File | Purpose |
 |---|---|
-| `packages/contracts/src/index.ts` | Older G0 schemas for claims, sources, medicines, sessions, and responses |
+| `packages/contracts/src/index.ts` | Core schemas for dates, sources, medicines, sessions, and errors |
 | `packages/contracts/src/platform.ts` | Newer portal schemas for profiles, releases, cards, faces, handwriting, scans, and alerts |
-| `packages/domain/src/index.ts` | Source validation, evidence classification, and G0 prescription derivation |
+| `packages/domain/src/lifecycle.ts` | Medication lifecycle derivation |
 | `packages/domain/src/lifecycle.ts` | Rich event-based medication lifecycle logic |
 
 ### Server
@@ -457,11 +409,11 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 | File | Purpose |
 |---|---|
 | `server/src/index.ts` | Opens/initializes the database, starts the API, and shuts down cleanly |
-| `server/src/app.ts` | Security middleware, sessions, old G0 endpoints, and mounting of the platform router |
+| `server/src/app.ts` | Security middleware, sessions, and mounting of the platform router |
 | `server/src/storage/database.ts` | Opens SQLite, finds the migration, and provides transactions |
 | `server/src/storage/migrations/001_initial.sql` | Creates the core relational tables and indexes |
-| `server/src/storage/repository.ts` | Reads typed G0 data from relational tables |
-| `server/src/storage/seed.ts` | Creates Maya's frozen G0 demo and password hashes |
+| `server/src/storage/repository.ts` | Actor, session, and patient-binding queries |
+| `server/src/storage/seed.ts` | Seeds the login fixture actors and password hashing |
 | `server/src/storage/demo-paths.ts` | Prevents reset code from targeting any database except the named demo file |
 | `server/src/storage/seed-cli.ts` | Command-line demo seeding entry point |
 | `server/src/storage/reset-cli.ts` | Safely removes only marked demo SQLite files |
@@ -496,7 +448,6 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 | `apps/web/src/platform/categorize.ts` | Suggests a record type from keywords while keeping the raw line |
 | `apps/web/src/platform/offline.ts` | Encryption, signature checks, IndexedDB vault, and receipt syncing |
 | `apps/web/public/sw.js` | Offline shell cache that excludes API data |
-| `apps/web/src/App.tsx` and `apps/web/src/api.ts` | Older G0 dashboard/client; retained but not used by current Next.js pages |
 | `apps/web/src/styles.css` and `platform/portal.css` | Visual design, responsiveness, portal widgets, and dark mode |
 
 ### Scripts, firmware, and assets
@@ -561,7 +512,6 @@ Useful demo accounts include:
 | Hospital | `hospital` | `pran-demo-hospital` |
 | Lab | `lab` | `pran-demo-lab` |
 | Break-glass approver | `approver` | `pran-demo-approver` |
-| Older G0 API/UI data | `maya.patient` | `pran-demo-patient` |
 
 Verification commands:
 
@@ -580,9 +530,6 @@ This is a thoughtful hackathon prototype, not a production clinical system.
 - The facility signing key is stored in the same demo database, not a secure key service.
 - Face photos may persist for the demo workflow.
 - The generic JSON object table has fewer database-level rules than dedicated tables would.
-- The app has two generations of APIs, seed patients, and medication logic.
-- The old `App.tsx` is not connected to the current Next.js pages.
-- Some README statements describe the earlier G0 stage and are now out of date.
 - The login limiter is only in one process's memory.
 - No production backup, disaster recovery, key rotation, regulatory validation, clinical governance, or real identity proofing is implemented.
 - Nepali copy still needs native-speaker review, and verified Bikram Sambat conversion is intentionally unavailable.

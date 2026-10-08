@@ -3,11 +3,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import {
   ApiErrorSchema,
-  InstantSchema,
   SessionRequestSchema,
   type ActorRole
 } from '@pran-rekha/contracts';
-import { classifyEvidence, derivePrescriptionView, validateSourceReference } from '@pran-rekha/domain';
 import { Repository } from './storage/repository.js';
 import { hashPassword } from './storage/seed.js';
 import { PlatformStore } from './platform/store.js';
@@ -40,11 +38,7 @@ function parseCookies(header: string | undefined): Record<string, string> {
   return cookies;
 }
 
-function routeParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function errorBody(code: 'INVALID_INPUT' | 'FORBIDDEN' | 'SOURCE_UNRESOLVED' | 'PATIENT_MISMATCH' | 'CONFLICT', message: string, requestId: string) {
+function errorBody(code: 'INVALID_INPUT' | 'FORBIDDEN' | 'CONFLICT', message: string, requestId: string) {
   return ApiErrorSchema.parse({ error: { code, message, retryable: false }, requestId });
 }
 
@@ -93,15 +87,6 @@ export function createApp(options: AppOptions) {
     response.locals.actor = actor;
     response.locals.tokenHash = digest;
     next();
-  }
-
-  function requirePatientAccess(response: Response<unknown, Locals>, patientId: string): boolean {
-    const actor = response.locals.actor;
-    if (!actor || !repository.actorCanReadPatient(actor.id, patientId)) {
-      response.status(404).json(errorBody('FORBIDDEN', 'The requested resource is unavailable.', response.locals.requestId));
-      return false;
-    }
-    return true;
   }
 
   app.post('/api/session', (request, response: Response<unknown, Locals>) => {
@@ -156,80 +141,6 @@ export function createApp(options: AppOptions) {
     if (response.locals.tokenHash) repository.deleteSession(response.locals.tokenHash);
     response.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'lax', secure: secureCookies, path: '/' });
     response.status(204).end();
-  });
-
-  app.get('/api/patients/:pid/timeline', authenticate, (request, response: Response<unknown, Locals>) => {
-    const patientId = routeParam(request.params.pid);
-    if (!patientId || !requirePatientAccess(response, patientId)) return;
-    const patient = repository.getPatient(patientId);
-    if (!patient) {
-      response.status(404).json(errorBody('FORBIDDEN', 'The requested resource is unavailable.', response.locals.requestId));
-      return;
-    }
-    const claims = repository.getClaims(patientId);
-    const evidenceLabels: Record<string, string> = {};
-    for (const claim of claims) {
-      for (const reference of claim.sourceRefs) {
-        const source = repository.getDocument(reference.sourceId);
-        if (!source) {
-          response.status(422).json(errorBody('SOURCE_UNRESOLVED', 'A source reference could not be resolved.', response.locals.requestId));
-          return;
-        }
-        try {
-          validateSourceReference({
-            id: source.id,
-            patientId: source.patient_id,
-            version: source.version,
-            sha256: source.sha256,
-            content: source.content,
-            pageCount: source.page_count
-          }, patientId, reference);
-        } catch {
-          response.status(422).json(errorBody('SOURCE_UNRESOLVED', 'A source reference could not be resolved.', response.locals.requestId));
-          return;
-        }
-      }
-      evidenceLabels[claim.id] = classifyEvidence({
-        authorised: true,
-        provenanceValid: true,
-        conflict: false,
-        missingContext: false,
-        reviewedIndependentOrigins: 0
-      }) ?? 'RECORDED_CLAIM';
-    }
-    response.json({
-      patient: { id: patient.id, displayName: patient.display_name, alternateName: patient.alternate_name },
-      claims,
-      evidenceLabels,
-      mode: 'synthetic_fixture'
-    });
-  });
-
-  app.get('/api/patients/:pid/prescriptions', authenticate, (request, response: Response<unknown, Locals>) => {
-    const patientId = routeParam(request.params.pid);
-    if (!patientId || !requirePatientAccess(response, patientId)) return;
-    const asOfCandidate = typeof request.query.asOf === 'string' ? request.query.asOf : clock().toISOString();
-    const parsedAsOf = InstantSchema.safeParse(asOfCandidate);
-    if (!parsedAsOf.success) {
-      response.status(400).json(errorBody('INVALID_INPUT', 'asOf must be an ISO 8601 timestamp with an offset.', response.locals.requestId));
-      return;
-    }
-    const prescriptions = repository.getMedications(patientId)
-      .map(({ record, events }) => derivePrescriptionView(record, events, parsedAsOf.data));
-    response.json({ prescriptions, mode: 'synthetic_fixture' });
-  });
-
-  app.get('/api/documents/:id/preview', authenticate, (request, response: Response<unknown, Locals>) => {
-    const documentId = routeParam(request.params.id);
-    const document = documentId ? repository.getDocument(documentId) : undefined;
-    if (!document || !requirePatientAccess(response, document.patient_id)) {
-      if (!response.headersSent) response.status(404).json(errorBody('FORBIDDEN', 'The requested resource is unavailable.', response.locals.requestId));
-      return;
-    }
-    response.json({
-      document: { id: document.id, version: document.version, title: document.title, content: document.content, sha256: document.sha256 },
-      mode: 'synthetic_fixture'
-    });
   });
 
   app.use((_request, response: Response<unknown, Locals>) => {

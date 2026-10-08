@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import request from 'supertest';
 import { beforeEach, afterEach, describe, it, expect } from 'vitest';
 import { openDatabase } from '../server/src/storage/database';
@@ -13,7 +13,7 @@ describe('combined platform',()=>{
   let now=new Date('2026-10-03T04:30:00.000Z');
   const pid='PR-9042-8819',base='/api/platform';
   const face={photo:'data:image/jpeg;base64,'+Buffer.from([0xff,0xd8,0xff,0xe0,0,0x10]).toString('base64'),descriptor:Array.from({length:128},(_,i)=>i/1000)};
-  beforeEach(()=>{dir=mkdtempSync(join(tmpdir(),'pran-platform-'));db=openDatabase({databasePath:join(dir,'db.sqlite')});seedDatabase(db,resolve('fixtures/documents'));now=new Date('2026-10-03T04:30:00.000Z');app=createApp({database:db,clock:()=>now,secureCookies:false});store=new PlatformStore(db);});
+  beforeEach(()=>{dir=mkdtempSync(join(tmpdir(),'pran-platform-'));db=openDatabase({databasePath:join(dir,'db.sqlite')});seedDatabase(db);now=new Date('2026-10-03T04:30:00.000Z');app=createApp({database:db,clock:()=>now,secureCookies:false});store=new PlatformStore(db);});
   afterEach(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
   async function actor(name:string){const a=request.agent(app);expect((await a.post('/api/session').send({username:name,password:'pran-demo-'+name})).status).toBe(201);return a;}
   async function access(){

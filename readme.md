@@ -1,6 +1,6 @@
 # Pran Rekha
 
-Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon. This G0 vertical slice demonstrates one synthetic patient claim, one prescription state derived from immutable evidence, and patient-specific authorization at the API boundary.
+Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon, with patient, paramedic, hospital and lab portals over synthetic demo data.
 
 The prototype is not a clinical system. It does not diagnose, recommend treatment, confirm current medication use, or contain real patient data.
 
@@ -17,12 +17,12 @@ rtk npm run demo:seed
 rtk npm run dev
 ```
 
-Open `http://localhost:5173` and use the prefilled synthetic patient credentials:
+Open `http://localhost:5173` and sign in with a demo account, for example:
 
-- Username: `maya.patient`
-- Password: `pran-demo-patient`
-
-The clinician fixture (`demo.clinician` / `pran-demo-clinician`) is deliberately unable to read the patient record because G0 does not implement emergency grants.
+- Patient: `siddharth` / `pran-demo-siddharth`
+- Paramedic: `paramedic` / `pran-demo-paramedic`
+- Hospital: `hospital` / `pran-demo-hospital`
+- Lab: `lab` / `pran-demo-lab`
 
 ## Install on a phone (PWA)
 
@@ -50,15 +50,12 @@ rtk npm run build
 
 ## Workspace map
 
-- `apps/web`: React and Vite patient dashboard
+- `apps/web`: Next.js patient, paramedic, hospital and lab portals
 - `server`: Express API, session boundary, SQLite migrations, and seed/reset scripts
 - `packages/contracts`: shared Zod schemas and wire types
-- `packages/domain`: pure evidence and medication rules
-- `fixtures`: frozen synthetic source document and truth manifest
-- `tests`: domain and service-boundary checks
+- `packages/domain`: pure medication lifecycle rules
+- `tests`: unit, API and browser checks
 
-## G0 boundaries
+## Boundaries
 
-Included: fixture authentication, source-linked patient timeline, exact source preview, prescription derivation, English/Nepali UI toggle, and negative access tests.
-
-Not included: document uploads, emergency grants or cards, NFC, offline snapshots, OCR, clinical review, or public deployment. Hospital face lookup is candidate-only: registered face photos and descriptors are stored in the demo SQLite database (see `health_plan.md` §5.2). The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.
+Synthetic demo data only; no clinical review or public deployment. Hospital face lookup is candidate-only: registered face photos and descriptors are stored in the demo SQLite database. The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.
