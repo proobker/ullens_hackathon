@@ -1,5 +1,6 @@
-// Session-local face candidate matcher (health_plan §5.2). Runs entirely in the browser;
-// images and descriptors are never sent to the API or persisted.
+// Face candidate matcher. Detection, description and matching run in the browser. The gallery is the
+// faces saved at hospital registration (photo + descriptor stored server-side, hospital-only) plus
+// session-only enrollments that are never sent to the API. Probe images are never uploaded.
 export type Enrolled={handle:string;label:string;patientId:string;descriptor:Float32Array};
 export type Candidate={handle:string;label:string;patientId:string};
 export type FaceResult={state:'NO_MATCH'}|{state:'CANDIDATES';candidates:Candidate[]}|{state:'AMBIGUOUS'}|{state:'UNAVAILABLE'};

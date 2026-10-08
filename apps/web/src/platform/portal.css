@@ -115,6 +115,7 @@
 .platform label.file-button:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .face-preview { display: block; max-width: min(100%, 420px); max-height: 320px; border-radius: 10px; border: 1px solid var(--line); object-fit: contain; }
+.face-preview[hidden] { display: none; }
 .face-result { border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 10px; padding: 12px; display: grid; gap: 6px; }
 .face-result.candidates { border-left-color: var(--amber); }
 .face-result.unavailable { border-left-color: var(--rose); }

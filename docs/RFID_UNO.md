@@ -130,14 +130,29 @@ behind staff approval. Approved LCD summaries start with `FICTIONAL DEMO`.
 Other cards retain the normal registration and approval behavior below.
 
 Hospital staff can register without a photo, then use **Add or update patient
-photo** in the hospital portal later. Photos are not fabricated; a profile without
-a photo is absent from face matching. Enrollment requires a real single-face
-photo, participant consent, and an assigned hospital clinician.
+photo** in the hospital portal later. The consented photo and its face descriptor
+are stored in the demo database and shown only to hospital staff. Photos are not
+fabricated; a profile without a photo is absent from face matching. Enrollment
+requires a real single-face photo, participant consent, and an assigned hospital
+clinician.
 
-The operator CLI `rtk proxy npx tsx scripts/enroll-demo-batch.ts BATCH_ID` activates
-a named seven-card batch transactionally. It refuses conflicting card links and
-reuses completed registrations on reruns. Credentials are stored only under
-ignored `.data/BATCH_ID-credentials.json`; never commit or publish that file.
+A demo batch is enrolled in three steps:
+
+1. **Capture.** With the API and bridge running, run
+   `rtk node scripts/capture-rfid-cards.mjs BATCH_ID [DEVICE_ID] [SINCE_ISO]`
+   (device defaults to `reader-pi-uno`) and tap the seven cards. It records each
+   new UID once, in first-seen order, as `PENDING_NAME`, without linking any
+   patient. Stop it with Ctrl+C; captured cards persist.
+2. **Name.** No script does this step. Edit the `rfid-enrollment-batch` row for
+   `BATCH_ID` in `platform_objects`: give each of the seven cards a `name` and set
+   the batch `status` to `NAMED`.
+3. **Enroll.** `rtk proxy npx tsx scripts/enroll-demo-batch.ts BATCH_ID` activates
+   the named batch transactionally. Each card gets a `PR-DEMO-…` profile with four
+   fictional `DEMO:` entries, a `demo-rfid-<uid>` login, and an assignment to the
+   `hospital` account. It refuses conflicting card links and reuses completed
+   registrations on reruns. Passwords are written to ignored
+   `.data/BATCH_ID-credentials.json` before the transaction commits; never commit
+   or publish that file.
 
 1. Tap a compatible 13.56 MHz ISO 14443-A card. The bridge log prints its UID,
    and the app receives it. A phone or 125 kHz tag may not work with the RC522.

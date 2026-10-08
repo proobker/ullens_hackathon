@@ -10,6 +10,6 @@ Place the clinic frontend/API behind a local HTTPS reverse proxy. Route /api/ to
 
 The development reader has a public synthetic credential synthetic-reader-secret-change-before-hardware, UID DEADBEEF, paired to the paramedic fixture. Replace the credential before using real hardware. It permits scan ingestion only. Do not store health data on tags or the ESP32.
 
-Simulator: set RFID_DEVICE_TOKEN, then run rtk node scripts/simulate-rfid.mjs DEADBEEF. It calls the same device endpoint as firmware. Scans remain candidates; staff must separately authorize record access.
+Simulator: set RFID_DEVICE_TOKEN (for the development reader, the synthetic credential above), then run rtk npm run rfid:simulate -- DEADBEEF. Optional RFID_DEVICE_ID (default reader-demo) and API_ORIGIN (default http://127.0.0.1:4100) override the target. It calls the same device endpoint as firmware. Scans remain candidates; staff must separately authorize record access.
 
 One pending event is retried with the same event ID. A reset loses the pending in-memory event. Hardware, range, card compatibility, power and local TLS acceptance remain unverified until the assembled reader is tested.

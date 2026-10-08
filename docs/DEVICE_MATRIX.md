@@ -1,6 +1,6 @@
 # Scanner hardware verification
 
-Recorded 2026-10-03, from SSH on `patient-scanner` (Raspberry Pi 3 B+).
+Recorded 2026-10-03, from SSH on `patient-scanner` (Raspberry Pi 3 B+). This is a dated record: the app test counts below are from that day, and the suite has changed since.
 
 | Check | Result |
 | --- | --- |
