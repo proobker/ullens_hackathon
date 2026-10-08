@@ -32,7 +32,7 @@ Think of the codebase as a small town:
 | The front desk | `apps/web` | Shows screens and collects button clicks |
 | The town hall | `server` | Checks identity, permissions, rules, and writes data |
 | The rulebook | `packages/contracts` | Defines exactly what valid data looks like |
-| The careful judge | `packages/domain` | Decides evidence labels and medication states |
+| The careful judge | `packages/domain` | Decides what state a medicine is in from its event history |
 | The filing cabinet | SQLite in `.data` | Keeps accounts, records, sessions, receipts, and demo objects |
 | The card reader | `firmware` | Reads RFID cards and talks to the server |
 | The inspectors | `tests` | Try normal and naughty actions to make sure rules hold |
@@ -68,14 +68,15 @@ The root page redirects to `/patient`. Four tiny Next.js page files all load the
 
 The patient can:
 
-- see their synthetic profile and source-attributed entries;
+- see their synthetic profile, a QR code of their opaque locator, and source-attributed entries;
+- see when the record is due for review (`FRESH`, `AGING` within 30 days, or `EXPIRED`);
 - choose exactly which entries may appear in an emergency summary;
 - revoke that emergency release;
 - add a clearly marked, unverified personal report;
 - inspect access receipts;
 - book a simulated discounted checkup;
 - import a document and confirm text from it;
-- report whether they are taking a recorded medicine;
+- add an attributed statement about a recorded medicine (a “use report”);
 - prepare an encrypted offline copy.
 
 The patient cannot turn their own statement into a clinician-signed fact. Patient reports remain visibly separate.
@@ -93,31 +94,32 @@ The paramedic can:
 - send a pre-arrival alert to the demo hospital;
 - request a separately approved five-minute “break glass” grant.
 
-A face result is only a candidate suggestion. It does not unlock a record.
+The paramedic screen also has a “Simulate face candidate” button. It is a labelled simulation only: no camera is used and nothing is matched. Real face matching lives in the hospital portal, and even there a result is only a candidate suggestion that never unlocks a record.
 
 ### Hospital portal
 
 Hospital staff can:
 
 - register a synthetic patient, account, RFID tag, and optional face photo;
-- add or replace a stored demo face enrollment;
-- use local face matching to suggest possible patients;
-- review and sign handwritten-note candidates;
-- receive incoming paramedic alerts;
+- add or replace the stored face photo of a patient they registered;
+- use local face matching to suggest possible patients, with the stored photo shown for comparison (each photo view writes a receipt);
+- review and sign handwritten-note candidates for patients they registered;
+- receive incoming paramedic alerts, optionally with a sound;
 - move an alert from `EN_ROUTE` to `ARRIVED` to `RESOLVED`;
 - approve a different staff member's break-glass request.
 
-Incoming alerts update through Server-Sent Events. The event itself contains no patient data; it merely tells the browser to fetch fresh, permission-checked data.
+Incoming alerts update through Server-Sent Events. The event itself contains no patient data; it merely tells the browser to fetch fresh, permission-checked data. A `BroadcastChannel` gives the same nudge between tabs of one browser.
 
 ### Lab portal
 
 Lab staff can:
 
-- view an assigned patient;
+- view an assigned patient (the lab is assigned Siddharth);
 - add a signed clinical entry;
+- add a prescription and append medication events (started, held, stopped, corrected, and so on);
 - review local OCR results from a handwritten page and sign selected lines;
 - inspect signed version history;
-- see a fake revenue ledger for the hackathon business-model demo.
+- see a fake revenue ledger for the hackathon business-model demo (each signing adds a simulated $50 checkup with an 8% commission).
 
 No actual payment happens.
 
@@ -151,7 +153,7 @@ The contracts define:
 - medication records and prescription views;
 - session and API error shapes;
 - signed clinical entries and profile versions;
-- RFID scans, grants, emergency cards, dispatch alerts, registration, faces, and handwritten updates.
+- RFID scans, grants, emergency cards, dispatch alerts, registration, faces, and handwritten updates (these live in `packages/contracts/src/platform.ts`).
 
 Important validation examples:
 
@@ -165,7 +167,7 @@ Important validation examples:
 
 ## The judge: domain logic
 
-`packages/domain` contains pure rules that do not know about web pages or databases. Today that is the medication `lifecycle`.
+`packages/domain` contains pure rules that do not know about web pages or databases. Today that is one function, `lifecycle` in `lifecycle.ts`.
 
 ### Medication state
 
@@ -178,7 +180,7 @@ The code deliberately distinguishes:
 - a passed course end from proof that a person stopped;
 - two contradictory same-day instructions from a trustworthy final answer.
 
-`lifecycle` derives the current state and supports corrections, retractions, dose changes, substitutions, and strict event linking.
+`lifecycle` derives the current state and supports corrections, retractions, dose changes, substitutions, and strict event linking. The server uses it when listing medicines and when building an emergency card, where each medication entry gets its state and “actual use not established” appended.
 
 ## The server
 
@@ -232,25 +234,29 @@ This prevents a shaky phone connection from creating two bookings, two records, 
 |---|---|
 | `/api/session` | Sign in, inspect the current session, or sign out |
 | `/api/platform/context` | Return server-derived role and visible patient list |
-| `/api/platform/profiles/...` | Read profiles; sign, release, revoke, report, book, snapshot, upload, or add medicine |
+| `/api/platform/profiles/...` | Read profiles and receipts; sign, release, revoke, report, book, snapshot, upload documents, add medicine, sign handwritten notes, or save a face |
+| `/api/platform/patients` | Hospital registration of a new synthetic patient |
+| `/api/platform/documents/...`, `/handwritten/...` | Download a private original or confirm text from it; view a handwritten-note image |
+| `/api/platform/medications/...` | Append medication events and use reports |
+| `/api/platform/ledger` | Lab-only simulated revenue ledger |
 | `/api/platform/rfid/...` | Accept authenticated device scans, poll reader state, and briefly display an approved card |
 | `/api/platform/linkage`, `/grants`, `/cards` | Turn a candidate into a short-lived approved view |
 | `/api/platform/dispatch`, `/alerts/...`, `/events` | Send and update hospital arrivals |
 | `/api/platform/faces...` | Store and retrieve hospital-only demo enrollments |
 | `/api/platform/break-glass...` | Request and separately approve exceptional access |
 | `/api/platform/offline...` | Check revocation and upload offline access receipts |
-| `/api/platform/readers...`, `/tags` | Admin provisioning and revocation |
+| `/api/platform/readers/provision`, `/readers/:id/revoke`, `/tags` | Admin-only reader provisioning/revocation and card-to-patient mapping |
 
 ## Storage: two filing systems in one database
 
 The project uses Node 24's built-in SQLite module with foreign keys and write-ahead logging.
 
-Login uses normal relational tables: `patients`, `actors`, `actor_patient_bindings`, and `sessions`. (The initial migration also creates `documents`, `claims`, `medications`, and `medication_events` from an earlier prototype; they are now left empty.)
+Login uses normal relational tables created by `server/src/storage/migrations/001_initial.sql`: `patients`, `actors`, `actor_patient_bindings`, and `sessions`. (That migration also creates `documents`, `claims`, `medications`, and `medication_events` from an earlier prototype; they are now always empty.)
 
-The platform adds:
+`PlatformStore` creates its own tables on startup:
 
 - `portal_roles` for staff role and location;
-- `platform_objects`, a general box holding JSON objects by `kind` and `id`;
+- `platform_objects`, a general box holding JSON objects by `kind` and `id` (profiles, tags, readers, scans, grants, alerts, documents, faces, medication records, the facility key, and so on);
 - `platform_receipts` for the audit trail;
 - `platform_requests` for idempotent mutation results.
 
@@ -260,7 +266,12 @@ Transactions use `BEGIN IMMEDIATE`, then either commit everything or roll everyt
 
 ## Demo data
 
-`seedDatabase` creates two login-only fixture actors (Maya Shrestha and a clinician). The portal UI is seeded by `PlatformStore` with Siddharth Raj Sharma plus patient, paramedic, hospital, lab, approver, and admin accounts.
+Two seeders run:
+
+- `PlatformStore.seed()` runs every time the API starts and fills in anything missing: the Ed25519 facility key; the `siddharth`, `paramedic`, `lab`, `hospital`, `approver`, and `admin` accounts; Siddharth Raj Sharma's signed record (blood group, allergy, donor status, two vitals, and one condition deliberately left out of the emergency release); the development reader `reader-demo`; and the card UID `DEADBEEF`. `seedMedicationMatrix` then adds eight demo medicines covering active, unknown, stopped, ended, held, unresolved-brand, dose-change, and conflicting cases. These start outside the emergency release.
+- `seedDatabase` (`npm run demo:seed`, or the first API start on an empty database) wipes all tables and adds two login-only fixture accounts used by the API tests: `maya.patient` and `demo.clinician`. They have no platform record, so their portals show nothing.
+
+The seven-card RFID demo batch adds more fictional patients; see `docs/RFID_UNO.md`.
 
 ## Document intake and handwriting OCR
 
@@ -268,7 +279,7 @@ There are two related paths.
 
 ### Uploaded documents
 
-Patients may upload a JPEG, PNG, or text PDF up to 10 MiB, with at most ten pages/documents per configured checks.
+Patients may upload a JPEG, PNG, or text PDF up to 10 MiB. Each patient may hold at most ten documents, and a PDF may have at most ten pages.
 
 The server:
 
@@ -277,10 +288,12 @@ The server:
 - extracts PDF text with PDF.js;
 - validates images with Sharp and limits pixel count;
 - de-duplicates by content hash;
-- stores the original privately;
-- makes the user confirm a page, span, text, date, and category.
+- stores the original privately in the database (download is owner-only, sandboxed, and sent as an attachment);
+- makes the patient confirm a page, character span, text, and date before it becomes an entry.
 
-Image-only input becomes an attributed manual transcription. The system does not pretend that made-up OCR coordinates exist.
+Confirmed entries are marked as unreviewed patient-sourced reports, not clinician-signed facts.
+
+Image-only input becomes an attributed manual transcription. The system does not pretend that made-up OCR coordinates exist. (Uploaded documents are not run through OCR; that is only for handwritten notes below.)
 
 ### Handwritten clinical notes
 
@@ -299,7 +312,7 @@ The browser performs the image work:
 
 The raw OCR line and original JPEG are retained as evidence. OCR is never silently promoted to a clinical fact.
 
-TrOCR model weights are downloaded from Hugging Face on first use; Tesseract worker/core/language assets are bundled under `public/tesseract`.
+The TrOCR model (`Xenova/trocr-small-handwritten`, 8-bit, about 64 MB) is downloaded from Hugging Face on first use and cached by the browser; it is the only thing OCR fetches from outside. Tesseract worker/core/language assets are bundled under `public/tesseract`. If TrOCR cannot load, Tesseract alone is used; setting `localStorage['pran-ocr-engine']='tesseract'` forces that mode.
 
 ## Face matching
 
@@ -314,11 +327,13 @@ Matching uses Euclidean distance with a threshold of `0.5`:
 
 Distances are never shown. A result contains only handles, labels, and patient IDs. Consent is required before matching.
 
-The code supports session-only enrollments that disappear on page exit. The hackathon registration workflow also intentionally stores consented demo photos and descriptors in SQLite so the hospital can find registered demo patients later. The UI and comments clearly mark this deviation.
+**Faces are stored.** When hospital staff register a patient with a photo, or later use “Add or update patient photo”, the browser sends a downscaled JPEG (at most 480 px on its longest side) and its 128-number descriptor to the server, which keeps both in SQLite. Both actions require ticking a consent box. Only hospital staff can list the stored descriptors (`GET /faces`) or view a stored photo (`GET /faces/:id/photo`), and every photo view writes a receipt.
+
+Matching itself still happens in the browser: the hospital page downloads the stored descriptors, describes the new image locally, and compares. The image being checked is never uploaded. The lookup panel can also hold up to five session-only enrollments that never leave the browser and are cleared when the page closes.
 
 ## Offline mode
 
-The service worker caches only the app shell, static assets, models, and navigation responses. It deliberately never caches `/api/` responses.
+The service worker (`public/sw.js`) caches the app shell, `/_next/static` assets, face models, Tesseract files, icons, the logo, and page navigations, fetching from the network first and falling back to the cache or `offline.html`. It deliberately never caches `/api/` responses.
 
 When a patient prepares an offline snapshot:
 
@@ -329,7 +344,7 @@ When a patient prepares an offline snapshot:
 - the browser derives an AES-256-GCM key from a 12+ character phrase using PBKDF2-SHA-256 with 310,000 iterations;
 - the encrypted snapshot is stored in IndexedDB.
 
-On unlock, the browser checks the phrase, clock rollback, expiry, device binding, known revocation, and signature before displaying anything. It records a local access receipt first and uploads queued receipts when online again.
+On unlock, the browser checks the phrase, clock rollback, expiry, device binding, known revocation (asking the server when online), and signature before displaying anything. It records a local access receipt first and uploads queued receipts when online again.
 
 An offline device cannot learn about a new revocation until it reconnects, so the UI warns that later changes may be unavailable.
 
@@ -374,13 +389,14 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 
 - Next.js App Router supplies routes and metadata.
 - React 19 renders the interactive client portal.
-- Zustand remembers language and an explicitly selected dark theme.
+- Zustand holds language and theme; both are saved in `localStorage`, the theme only once the user explicitly picks one (light is the default).
 - English and draft Nepali labels are available; the footer says native-speaker review is pending.
 - Radix Dialog displays source evidence accessibly.
 - Lucide supplies icons.
 - QRCode makes the opaque locator image.
 - The manifest and service worker make the project installable as a PWA.
-- CSS files implement responsive layouts, cards, warnings, portal boards, and dark mode.
+- `styles.css` (Tailwind import, base tokens, form basics) and `platform/portal.css` implement responsive layouts, cards, warnings, portal boards, and dark mode.
+- Noto Sans Devanagari is bundled for the Nepali text.
 
 ## Important files, one by one
 
@@ -394,6 +410,7 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 | `vitest.config.ts` | Runs Node-based unit and integration tests |
 | `playwright.config.ts` | Runs browser tests against a disposable SQLite database |
 | `readme.md` | Quick-start guide |
+| `.env.example` | Reference environment variables (not loaded automatically) |
 
 ### Shared packages
 
@@ -401,43 +418,45 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 |---|---|
 | `packages/contracts/src/index.ts` | Core schemas for dates, sources, medicines, sessions, and errors |
 | `packages/contracts/src/platform.ts` | Newer portal schemas for profiles, releases, cards, faces, handwriting, scans, and alerts |
-| `packages/domain/src/lifecycle.ts` | Medication lifecycle derivation |
-| `packages/domain/src/lifecycle.ts` | Rich event-based medication lifecycle logic |
+| `packages/domain/src/lifecycle.ts` | Event-based medication lifecycle logic (re-exported by `index.ts`) |
 
 ### Server
 
 | File | Purpose |
 |---|---|
 | `server/src/index.ts` | Opens/initializes the database, starts the API, and shuts down cleanly |
-| `server/src/app.ts` | Security middleware, sessions, and mounting of the platform router |
+| `server/src/app.ts` | Security headers, origin check, login rate limit, sessions, and mounting of the platform router |
 | `server/src/storage/database.ts` | Opens SQLite, finds the migration, and provides transactions |
 | `server/src/storage/migrations/001_initial.sql` | Creates the core relational tables and indexes |
 | `server/src/storage/repository.ts` | Actor, session, and patient-binding queries |
-| `server/src/storage/seed.ts` | Seeds the login fixture actors and password hashing |
+| `server/src/storage/seed.ts` | `hashPassword` (scrypt) and the login-only test fixtures |
 | `server/src/storage/demo-paths.ts` | Prevents reset code from targeting any database except the named demo file |
-| `server/src/storage/seed-cli.ts` | Command-line demo seeding entry point |
+| `server/src/storage/seed-cli.ts` | `npm run demo:seed`: wipes and reseeds, and writes the demo-workspace marker |
 | `server/src/storage/reset-cli.ts` | Safely removes only marked demo SQLite files |
-| `server/src/platform/store.ts` | Generic platform object store, receipts, request replay protection, signatures, and Siddharth demo seed |
-| `server/src/platform/routes.ts` | Main profiles, RFID, release, face, dispatch, alerts, booking, ledger, and offline routes |
+| `server/src/platform/store.ts` | Generic platform object store, receipts, request replay protection, signatures, and the portal-account/Siddharth seed |
+| `server/src/platform/routes.ts` | Main profiles, RFID, release, registration, face, handwritten, dispatch, alerts, booking, ledger, and offline routes |
 | `server/src/platform/intake.ts` | Safe PDF/image import and confirmation |
 | `server/src/platform/medications.ts` | Medication creation, lifecycle events, and use reports |
 | `server/src/platform/operations.ts` | Reader/tag administration, break-glass approval, and offline revocation checks |
-| `server/src/platform/fixtures.ts` | Seeds demo medication cases |
+| `server/src/platform/fixtures.ts` | Seeds Siddharth's eight demo medication cases |
 | `server/src/platform/enroll-demo-batch.ts` | Atomically turns seven named RFID cards into fictional demo patients |
+| `server/tsup.config.ts` | Bundles the API into `server/dist` for `npm start` |
 
 ### Web app
 
 | File | Purpose |
 |---|---|
+| `apps/web/next.config.mjs` | Proxies `/api/*` to the Express API on port 4100 |
 | `apps/web/src/app/layout.tsx` | Global metadata, fonts, CSS, and early dark-theme setup |
 | `apps/web/src/app/manifest.ts` | PWA name, icons, colors, start page, and shortcuts |
+| `apps/web/src/app/page.tsx` | Redirects `/` to `/patient` |
 | `apps/web/src/app/*/page.tsx` | Very small route entry points for the four portals |
 | `apps/web/src/platform/Portal.tsx` | Main role-aware UI and most user journeys |
 | `apps/web/src/platform/client.ts` | Fetch helper, preferences, translations, and request IDs |
 | `apps/web/src/platform/Workflows.tsx` | Document, medication, use-report, and break-glass forms |
 | `apps/web/src/platform/RegisterPatient.tsx` | Hospital registration, optional face data, and locator QR |
-| `apps/web/src/platform/EnrollFace.tsx` | Add/update a face for an existing demo patient |
-| `apps/web/src/platform/FaceLookup.tsx` | Consent-gated local matching UI |
+| `apps/web/src/platform/EnrollFace.tsx` | Add/update the stored face photo for a patient the hospital registered |
+| `apps/web/src/platform/FaceLookup.tsx` | Consent-gated local matching against stored and session-only faces |
 | `apps/web/src/platform/PhotoCapture.tsx` | Camera/upload component with careful stream and URL cleanup |
 | `apps/web/src/platform/face.ts` | Face model loading, description, distance, and cautious result states |
 | `apps/web/src/platform/HandwrittenUpdate.tsx` | OCR review and clinician signing screen |
@@ -448,23 +467,25 @@ The Uno removes duplicate rapid taps and clears patient text after eight seconds
 | `apps/web/src/platform/categorize.ts` | Suggests a record type from keywords while keeping the raw line |
 | `apps/web/src/platform/offline.ts` | Encryption, signature checks, IndexedDB vault, and receipt syncing |
 | `apps/web/public/sw.js` | Offline shell cache that excludes API data |
+| `apps/web/public/offline.html` | Page shown when offline and the requested page is not cached |
 | `apps/web/src/styles.css` and `platform/portal.css` | Visual design, responsiveness, portal widgets, and dark mode |
 
 ### Scripts, firmware, and assets
 
 | Path | Purpose |
 |---|---|
-| `scripts/simulate-rfid.mjs` | Sends one authenticated fake card scan |
+| `scripts/simulate-rfid.mjs` | Sends one authenticated fake card scan (`npm run rfid:simulate`) |
 | `scripts/capture-rfid-cards.mjs` | Collects seven physical cards in first-seen order without assigning patients yet |
 | `scripts/enroll-demo-batch.ts` | Generates private passwords first, then atomically registers a named seven-card batch |
-| `scripts/phone.mjs` | Builds the app, opens a temporary Cloudflare HTTPS tunnel, starts both servers, and prints a QR code |
+| `scripts/phone.mjs` | Builds the app, opens a temporary Cloudflare HTTPS tunnel, starts both servers, and prints a QR code (`npm run phone`) |
 | `apps/web/scripts/generate-icons.mjs` | Rebuilds PWA icons from source artwork |
 | `firmware/rc522` | ESP32 Wi-Fi reader implementation |
 | `firmware/uno_scanner` | Arduino reader and LCD implementation |
 | `firmware/pi_bridge` | Raspberry Pi serial-to-API bridge, service file, and tests |
 | `docs/RFID.md`, `docs/RFID_UNO.md`, `docs/DEVICE_MATRIX.md` | Hardware setup and supported-device notes |
-| `docs/ASSET_LICENSES.md` | Asset licensing information |
-| `images`, `apps/web/assets`, `apps/web/public/brand`, `apps/web/public/icons` | Logos and generated app artwork |
+| `docs/ASSET_LICENSES.md` | Licences and SHA-256 hashes of bundled models and OCR files |
+| `apps/web/assets` | Source artwork for the logo and icon |
+| `apps/web/public/brand`, `apps/web/public/icons` | Generated logo and app icons |
 | `apps/web/public/models` | Bundled face-model weights |
 | `apps/web/public/tesseract` | Bundled Tesseract runtime and English language data |
 
@@ -474,12 +495,9 @@ Vitest covers the rule and API layers. Playwright drives real browser portals. P
 
 The tests specifically check:
 
-- exact source spans and cross-patient rejection;
-- cautious evidence ordering;
+- session cookies, role forgery at login, and allowed-origin checks;
 - medication states, conflicts, course ends, corrections, and retractions;
-- role forgery and unassigned-clinician denial;
-- identical denial shapes for missing and forbidden records;
-- allowed-origin checks;
+- role forgery, patient signing, unassigned-lab, and wrong-destination denial;
 - authenticated and deduplicated RFID scans;
 - LCD approval, expiry, logout, release change, new-card isolation, and failed auditing;
 - grant expiry, revocation, session binding, and break-glass two-person approval;
@@ -489,7 +507,8 @@ The tests specifically check:
 - offline encryption, wrong phrases, expiry, signature tampering, receipts, and offline reload;
 - face candidate-only results;
 - OCR image segmentation, shadows, touching lines, blank pages, skew, lexicon fixes, and categorization;
-- light/dark theme behavior and key end-to-end portal journeys.
+- light/dark theme behavior and key end-to-end portal journeys;
+- the Pi bridge's LCD paging, UID formats, character handling, command-injection safety, and refusal of unencrypted remote APIs.
 
 ## How to run it
 
@@ -497,21 +516,21 @@ Requirements: Node.js 24+ and npm 11+.
 
 ```powershell
 rtk npm install
-rtk npm run demo:seed
 rtk npm run dev
 ```
 
-Then open `http://localhost:5173`.
+Then open `http://localhost:5173`. The database and demo accounts are created on the API's first start.
 
 Useful demo accounts include:
 
 | Portal | Username | Password |
 |---|---|---|
-| Current patient portal | `siddharth` | `pran-demo-siddharth` |
+| Patient | `siddharth` | `pran-demo-siddharth` |
 | Paramedic | `paramedic` | `pran-demo-paramedic` |
 | Hospital | `hospital` | `pran-demo-hospital` |
 | Lab | `lab` | `pran-demo-lab` |
 | Break-glass approver | `approver` | `pran-demo-approver` |
+| Admin (API only) | `admin` | `pran-demo-admin` |
 
 Verification commands:
 
@@ -522,15 +541,19 @@ rtk npm run build
 rtk npm run test:e2e
 ```
 
+`test:e2e` needs a fresh `npm run build`, free ports 5173/4100, and Microsoft Edge.
+
 ## Honest limitations
 
 This is a thoughtful hackathon prototype, not a production clinical system.
 
 - All data and credentials are demo data.
 - The facility signing key is stored in the same demo database, not a secure key service.
-- Face photos may persist for the demo workflow.
+- Consented face photos and descriptors are stored in the demo database; there is no retention limit or delete control.
 - The generic JSON object table has fewer database-level rules than dedicated tables would.
 - The login limiter is only in one process's memory.
+- Break-glass approval creates a grant, but the paramedic screen only shows the approval status; there is no button yet to open the card with it.
+- The two older login fixtures (`maya.patient`, `demo.clinician`) exist only for tests and see no data.
 - No production backup, disaster recovery, key rotation, regulatory validation, clinical governance, or real identity proofing is implemented.
 - Nepali copy still needs native-speaker review, and verified Bikram Sambat conversion is intentionally unavailable.
 - The Cloudflare quick tunnel is a demo convenience, not a production deployment plan.

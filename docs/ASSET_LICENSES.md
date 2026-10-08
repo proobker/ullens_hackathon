@@ -30,3 +30,9 @@ Candidate generation only: no liveness, anti-spoofing, population accuracy or de
 | lang/eng.traineddata.gz | 45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91 |
 
 Accuracy on real handwriting is limited (block capitals work best; cursive often fails). No accuracy claim is made.
+
+## Handwriting model (downloaded, not bundled)
+
+- Package: `@huggingface/transformers` 4.x (Apache-2.0), running in a browser Web Worker.
+- Model: `Xenova/trocr-small-handwritten`, 8-bit quantised (about 64 MB). Not stored in this repository: the browser downloads it from the Hugging Face Hub on first use and caches it. It is the only OCR asset fetched from outside the app; images are processed locally and are never uploaded for recognition.
+- Check the model card on the Hugging Face Hub for its licence before redistributing the weights.

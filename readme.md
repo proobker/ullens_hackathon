@@ -1,28 +1,40 @@
 # Pran Rekha
 
-Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon, with patient, paramedic, hospital and lab portals over synthetic demo data.
+Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon. Patients choose which signed entries may be shared in an emergency; paramedics find the record by RFID card or QR locator and get a short-lived, audited view of only that approved scope; hospitals receive pre-arrival alerts; labs sign new entries.
 
 The prototype is not a clinical system. It does not diagnose, recommend treatment, confirm current medication use, or contain real patient data.
 
+For a full plain-language tour of the code, see [CODEBASE_EXPLAINED.md](CODEBASE_EXPLAINED.md).
+
 ## Requirements
 
-- Node.js 24 or newer
+- Node.js 24 or newer (uses the built-in `node:sqlite`)
 - npm 11 or newer
 
 ## Run the demo
 
 ```powershell
 rtk npm install
-rtk npm run demo:seed
 rtk npm run dev
 ```
 
-Open `http://localhost:5173` and sign in with a demo account, for example:
+Open `http://localhost:5173`. The API (port 4100) creates `.data/pran-rekha-demo.sqlite` and the demo accounts on first start. Each portal pre-fills its own demo login:
 
-- Patient: `siddharth` / `pran-demo-siddharth`
-- Paramedic: `paramedic` / `pran-demo-paramedic`
-- Hospital: `hospital` / `pran-demo-hospital`
-- Lab: `lab` / `pran-demo-lab`
+| Portal | Username | Password |
+|---|---|---|
+| Patient (`/patient`) | `siddharth` | `pran-demo-siddharth` |
+| Paramedic (`/paramedic`) | `paramedic` | `pran-demo-paramedic` |
+| Hospital (`/hospital`) | `hospital` | `pran-demo-hospital` |
+| Lab (`/lab`) | `lab` | `pran-demo-lab` |
+| Break-glass approver (`/hospital`) | `approver` | `pran-demo-approver` |
+| Admin (API only: readers, tags) | `admin` | `pran-demo-admin` |
+
+Useful database commands:
+
+- `rtk npm run demo:seed` wipes the demo database back to its fixtures. Restart the API afterwards; it re-creates the portal accounts and Siddharth's record on start.
+- `rtk npm run demo:reset` deletes only `.data/pran-rekha-demo.sqlite` and its SQLite sidecars, and refuses to run unless `demo:seed` has written the synthetic-workspace marker.
+
+Environment variables (`DATABASE_PATH`, `PORT`, `PUBLIC_ORIGIN`) are listed in `.env.example`; nothing loads that file automatically.
 
 ## Install on a phone (PWA)
 
@@ -44,18 +56,21 @@ To change the branding, replace `apps/web/assets/logo-wordmark.png` (header and 
 rtk npm run typecheck
 rtk npm run test
 rtk npm run build
+rtk npm run test:e2e
 ```
 
-`demo:seed` recreates the deterministic records using the clock `2026-10-03T04:30:00.000Z`. `demo:reset` removes only `.data/pran-rekha-demo.sqlite` and its SQLite sidecars, and refuses to run without the matching synthetic-workspace marker.
+`test:e2e` runs Playwright against the production build (`npm run build` first) in headless Microsoft Edge, using a throwaway `.data/e2e.sqlite`. Stop `npm run dev` before running it.
 
 ## Workspace map
 
-- `apps/web`: Next.js patient, paramedic, hospital and lab portals
-- `server`: Express API, session boundary, SQLite migrations, and seed/reset scripts
+- `apps/web`: Next.js patient, paramedic, hospital and lab portals (PWA)
+- `server`: Express API, session boundary, SQLite storage, and seed/reset scripts
 - `packages/contracts`: shared Zod schemas and wire types
 - `packages/domain`: pure medication lifecycle rules
+- `scripts`: phone tunnel, RFID simulator, and demo card enrollment
+- `firmware`: ESP32 and Arduino Uno + Raspberry Pi RFID readers (see `docs/RFID.md`, `docs/RFID_UNO.md`)
 - `tests`: unit, API and browser checks
 
 ## Boundaries
 
-Synthetic demo data only; no clinical review or public deployment. Hospital face lookup is candidate-only: registered face photos and descriptors are stored in the demo SQLite database. The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.
+Synthetic demo data only; no clinical review or public deployment. Face lookup is candidate-only and never unlocks a record. Face photos and descriptors saved at hospital registration are stored in the demo SQLite database and served only to hospital staff. The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.
