@@ -8,7 +8,7 @@ const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const databasePath = resolve(workspaceRoot, process.env.DATABASE_PATH ?? '.data/pran-rekha-demo.sqlite');
 const database = openDatabase({ databasePath });
 const count = database.prepare('SELECT COUNT(*) AS count FROM patients').get() as { count: number };
-if (count.count === 0) seedDatabase(database);
+if (count.count === 0 && process.env.NODE_ENV !== 'production') seedDatabase(database);
 
 const port = Number(process.env.PORT ?? 4100);
 const app = createApp({ database });

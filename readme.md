@@ -4,6 +4,8 @@ Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon.
 
 The prototype is not a clinical system. It does not diagnose, recommend treatment, confirm current medication use, or contain real patient data.
 
+The server seeds published demo accounts and synthetic records outside production. In production (`NODE_ENV=production`), it skips all fixture seeding, leaves login fields blank, and refuses to start with a database containing the built-in demo accounts or Siddharth demo profile. Use a clean database for production.
+
 For a full plain-language tour of the code, see [CODEBASE_EXPLAINED.md](CODEBASE_EXPLAINED.md).
 
 ## Requirements

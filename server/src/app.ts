@@ -22,6 +22,7 @@ export type AppOptions = {
   database: DatabaseSync;
   clock?: () => Date;
   secureCookies?: boolean;
+  demoFixtures?: boolean;
 };
 
 function tokenHash(token: string): string {
@@ -46,8 +47,25 @@ export function createApp(options: AppOptions) {
   const app = express();
   const repository = new Repository(options.database);
   const platform = new PlatformStore(options.database);
-  platform.seed();
-  seedMedicationMatrix(platform);
+  const demoFixtures = options.demoFixtures ?? process.env.NODE_ENV !== 'production';
+  if (process.env.NODE_ENV === 'production' && demoFixtures) {
+    throw new Error('Demo fixtures cannot be enabled in production.');
+  }
+  if (process.env.NODE_ENV === 'production') {
+    const demoAccount = options.database.prepare(
+      "SELECT 1 FROM actors WHERE username IN ('siddharth','paramedic','lab','hospital','approver','admin','maya.patient','demo.clinician') LIMIT 1"
+    ).get();
+    const demoProfile = options.database.prepare(
+      "SELECT 1 FROM platform_objects WHERE kind='profile' AND id='PR-9042-8819' LIMIT 1"
+    ).get();
+    if (demoAccount || demoProfile) {
+      throw new Error('This database contains built-in demo accounts or profiles; use a clean database in production.');
+    }
+  }
+  if (demoFixtures) {
+    platform.seed();
+    seedMedicationMatrix(platform);
+  }
   const clock = options.clock ?? (() => new Date());
   const secureCookies = options.secureCookies ?? process.env.NODE_ENV === 'production';
 

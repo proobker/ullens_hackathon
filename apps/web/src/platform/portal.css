@@ -53,6 +53,8 @@
 .platform input[type='range'] { width: 100%; accent-color: var(--rose); }
 .platform button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 600; cursor: pointer; }
 .platform button:disabled { opacity: .5; cursor: not-allowed; }
+.platform button { margin: 0; }
+.platform label { margin: 0; }
 .platform button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
 .platform button.dispatch { background: var(--rose); border-color: var(--rose); color: #fff; padding: 18px; font-size: 1.1rem; text-transform: uppercase; letter-spacing: .04em; }
 
@@ -84,6 +86,21 @@
 .unverified { color: var(--amber) !important; font-size: .78rem; font-weight: 600; }
 .caution { font-size: .75rem; }
 .receipts { margin: 0; padding-left: 18px; color: var(--muted); display: grid; gap: 4px; font-size: .85rem; }
+
+.disclosure { gap: 12px; }
+.disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; font-weight: 700; list-style: none; }
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::before { content: '＋'; color: var(--teal); font-size: 1.15rem; line-height: 1; }
+.disclosure[open] > summary::before { content: '−'; }
+.disclosure > summary > span:first-of-type { margin-right: auto; }
+.disclosure-meta { color: var(--muted); font-size: .78rem; font-weight: 500; text-align: right; }
+.disclosure > .surface { border: 0; padding: 0; background: transparent; }
+.tool-stack { display: grid; gap: 12px; }
+.tool-stack > .surface { box-shadow: none; }
+.lookup-options { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.lookup-options > summary { cursor: pointer; color: var(--muted); font-size: .85rem; font-weight: 600; }
+.login-hint { padding-top: 10px; border-top: 1px solid var(--line); font-size: .85rem; }
+@media (max-width: 560px) { .disclosure > summary { align-items: flex-start; } .disclosure-meta { max-width: 45%; } }
 
 .scanner { display: grid; justify-items: center; gap: 6px; padding: 24px; border: 2px dashed var(--line); border-radius: 12px; color: var(--muted); text-align: center; }
 
