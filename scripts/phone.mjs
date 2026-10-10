@@ -63,6 +63,6 @@ if (stopping) process.exit(1);
 
 console.log(`\n${await QRCode.toString(url, { type: 'terminal', small: true })}`);
 console.log(`  Phone URL: ${url}`);
-console.log('  Scan the QR code, log in (maya.patient / pran-demo-patient), then');
+console.log('  Scan the QR code, log in (siddharth / pran-demo-siddharth), then');
 console.log('  Android: menu → Install app   iOS Safari: Share → Add to Home Screen');
 console.log('  The URL changes every run. Press Ctrl+C to stop.\n');

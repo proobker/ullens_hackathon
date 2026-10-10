@@ -33,8 +33,8 @@ export default function Portal({portal}:{portal:PortalName}) {
   const {language,setLanguage,theme,setTheme}=usePreferences();const t=labels[language];
   const [session,setSession]=useState<SessionResponse|null>(null),[context,setContext]=useState<Context|null>(null);
   const [profile,setProfile]=useState<PlatformProfile|null>(null),[error,setError]=useState(''),[message,setMessage]=useState('');
-  const [busy,setBusy]=useState(false),[username,setUsername]=useState(portal==='patient'?'siddharth':portal);
-  const [password,setPassword]=useState('pran-demo-'+(portal==='patient'?'siddharth':portal));
+  const [busy,setBusy]=useState(false),[username,setUsername]=useState(process.env.NODE_ENV==='production'?'':portal==='patient'?'siddharth':portal);
+  const [password,setPassword]=useState(process.env.NODE_ENV==='production'?'':'pran-demo-'+(portal==='patient'?'siddharth':portal));
   const [allowed,setAllowed]=useState<string[]>([]),[receipts,setReceipts]=useState<Record<string,unknown>[]>([]);
   const [alerts,setAlerts]=useState<Alert[]>([]),[ledger,setLedger]=useState<Record<string,unknown>[]>([]);
   const [locator,setLocator]=useState('');
@@ -131,7 +131,7 @@ export default function Portal({portal}:{portal:PortalName}) {
       {!session?<section className="surface login-panel"><h2>{t.signIn}</h2><form onSubmit={e=>{e.preventDefault();void run(login);}}>
         <label>{t.name}<input value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username"/></label>
         <label>{t.password}<input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password"/></label>
-        <button className="primary" disabled={busy}>{t.signIn}</button></form><p>Demo accounts: siddharth, paramedic, hospital, lab. Password: pran-demo- followed by username.</p></section>
+        <button className="primary" disabled={busy}>{t.signIn}</button></form>{process.env.NODE_ENV!=='production'&&<p className="login-hint">Demo accounts: siddharth, paramedic, hospital and lab. Password: pran-demo- followed by username.</p>}</section>
       :!isAllowed?<section className="surface"><h2>This account has no access to this portal.</h2><p>Sign out and authenticate with the provisioned account for this role.</p></section>:<>
 
       {portal==='patient'&&profile&&<div className="portal-grid">
@@ -146,13 +146,13 @@ export default function Portal({portal}:{portal:PortalName}) {
           <p>Review schedule; current health and medication use require separate assessment.</p>
           <p className="offer">$50 checkup · 15% Pran Rekha partner discount → $42.50 (simulated)</p>
           <button className="primary" onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/book',{requestId:requestId(),date:new Date().toISOString().slice(0,10)});setMessage('Simulated appointment booked for $42.50. No payment was taken.');})}>{t.booking}</button></section>
-        <section className="surface wide"><h2>{t.records}</h2><div className="entries">{renderEntries(profile.entries)}</div></section>
+        <details className="surface wide disclosure"><summary><span>{t.records}</span><span className="disclosure-meta">{profile.entries.length} entries</span></summary><div className="entries">{renderEntries(profile.entries)}</div></details>
         <section className="surface"><h2>{t.release}</h2><p>Select each entry and its excerpt for emergency sharing.</p>{profile.entries.map(e=><label className="check" key={e.id}><input type="checkbox" checked={allowed.includes(e.id)} onChange={event=>setAllowed(event.target.checked?[...allowed,e.id]:allowed.filter(id=>id!==e.id))}/>{e.text}</label>)}
           <button className="primary" onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/release',{requestId:requestId(),expectedRevision:profile.revision,allowedEntryIds:allowed});await refresh();setMessage('Emergency release updated.');})}>{t.save}</button>
           <button onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/revoke',{requestId:requestId(),expectedRevision:profile.revision});await refresh();})}>{t.revoke}</button>
           <p>{profile.release.revoked?'Revoked':'Active'} · revision {profile.release.revision}</p></section>
-        <section className="surface"><h2>{t.report}</h2><textarea value={report} onChange={e=>setReport(e.target.value)} aria-label="Patient report"/><button disabled={!report.trim()} onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/reports',{requestId:requestId(),expectedRevision:profile.revision,text:report,date:new Date().toISOString().slice(0,10)});setReport('');await refresh();})}>{t.report}</button><p>Attributed to you. This does not change a clinician-signed record.</p></section>
-        <section className="surface wide"><h2>{t.receipts}</h2><button onClick={()=>void run(refresh)}>{t.refresh}</button>{receipts.length?<ul className="receipts">{receipts.map(r=><li key={String(r.id)}>{String(r.at)} · {String(r.actorId)} · {String(r.purpose)}</li>)}</ul>:<p>No access receipts yet.</p>}</section>
+        <details className="surface disclosure"><summary><span>{t.report}</span><span className="disclosure-meta">Add a personal note</span></summary><label>Your note<textarea value={report} onChange={e=>setReport(e.target.value)} aria-label="Patient report"/></label><button disabled={!report.trim()} onClick={()=>void run(async()=>{await api('platform/profiles/'+profile.id+'/reports',{requestId:requestId(),expectedRevision:profile.revision,text:report,date:new Date().toISOString().slice(0,10)});setReport('');await refresh();})}>{t.report}</button><p>Attributed to you; this does not change a clinician-signed record.</p></details>
+        <details className="surface wide disclosure"><summary><span>{t.receipts}</span><span className="disclosure-meta">{receipts.length} records</span></summary><button onClick={()=>void run(refresh)}>{t.refresh}</button>{receipts.length?<ul className="receipts">{receipts.map(r=><li key={String(r.id)}>{String(r.at)} · {String(r.actorId)} · {String(r.purpose)}</li>)}</ul>:<p>No access receipts yet.</p>}</details>
       </div>}
 
       {portal==='lab'&&profile&&<div className="portal-grid">
@@ -164,17 +164,17 @@ export default function Portal({portal}:{portal:PortalName}) {
           <p>Ed25519 demo signature · integrity verified on every read. Demonstrates record integrity, not accreditation.</p></section>
         <section className="surface"><h2>Simulated revenue ledger</h2>{ledger.length?<ul className="receipts">{ledger.map(l=><li key={String(l.id)}>Checkup ${(Number(l.amountMinor)/100).toFixed(2)} · take-rate (8%) ${(Number(l.commissionMinor)/100).toFixed(2)}</li>)}</ul>:<p>No checkups signed yet.</p>}
           <p><strong>Total commission: ${(ledger.reduce((sum,l)=>sum+Number(l.commissionMinor),0)/100).toFixed(2)}</strong></p><p>Illustrative only. No payments are processed.</p></section>
-        <section className="surface wide"><h2>Signed record history</h2><ul className="receipts">{profile.versions.map(v=><li key={v.id}>Version {v.revision} · {v.signer} · {v.signedAt} · review due {v.reviewDue.slice(0,10)}</li>)}</ul></section>
-        <section className="surface wide"><h2>Patient record entries</h2><div className="entries">{renderEntries(profile.entries)}</div></section>
-        <HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>
+        <details className="surface wide disclosure"><summary><span>Record history and entries</span><span className="disclosure-meta">{profile.versions.length} signed versions · {profile.entries.length} entries</span></summary><ul className="receipts">{profile.versions.map(v=><li key={v.id}>Version {v.revision} · {v.signer} · {v.signedAt} · review due {v.reviewDue.slice(0,10)}</li>)}</ul><div className="entries">{renderEntries(profile.entries)}</div></details>
+        <details className="surface wide disclosure"><summary><span>Medication and document tools</span><span className="disclosure-meta">Review or add source evidence</span></summary><RecordWorkflows patientId={profile.id} revision={profile.revision} onChange={refresh} clinician/></details>
       </div>}
 
       {portal==='paramedic'&&<div className="portal-grid">
         <section className="surface"><div className="scanner"><Radio size={64}/><p>RFID scanner</p><span>Paired reader: {context?.staff.reader} · Unit {context?.staff.unit}</span></div>
-          <button onClick={()=>void run(async()=>{setLink(null);setCard(null);setGrantId('');setConfirmed(false);const result=await api<{state:string;patientId:string;linkageId:string}>('platform/rfid/pending');if(result.state==='CANDIDATE'){setLink({patientId:result.patientId,linkageId:result.linkageId});setMessage('Card found. Confirm access below to show the summary on the scanner LCD.');}else setMessage('Reader: '+result.state);})}>{t.scan}</button>
-          <button onClick={()=>void run(async()=>{setLocator(demoLocator);await resolveLocator(demoLocator);setMessage('SIMULATED QR scan of the demo pass.');})}><QrCode size={16}/> Simulate QR scan</button>
-          <label>QR / manual locator<input value={locator} onChange={e=>setLocator(e.target.value)}/></label><button disabled={!locator} onClick={()=>void run(()=>resolveLocator(locator))}>{t.manual}</button>
-          <label className="check"><input type="checkbox" checked={faceConsent} onChange={e=>{setFaceConsent(e.target.checked);setFace(false);}}/>Consent to session-only face candidate simulation</label><button disabled={!faceConsent} onClick={()=>setFace(true)}>Simulate face candidate</button>{face&&<p>SIMULATED possible local candidate. Record remains locked. No image captured.</p>}
+          <button className="primary" onClick={()=>void run(async()=>{setLink(null);setCard(null);setGrantId('');setConfirmed(false);const result=await api<{state:string;patientId:string;linkageId:string}>('platform/rfid/pending');if(result.state==='CANDIDATE'){setLink({patientId:result.patientId,linkageId:result.linkageId});setMessage('Card found. Confirm access below to show the summary on the scanner LCD.');}else setMessage('Reader: '+result.state);})}>{t.scan}</button>
+          <details className="lookup-options"><summary>Other ways to find a record</summary><button onClick={()=>void run(async()=>{setLocator(demoLocator);await resolveLocator(demoLocator);setMessage('SIMULATED QR scan of the demo pass.');})}><QrCode size={16}/> Simulate QR scan</button>
+            <label>QR / manual locator<input value={locator} onChange={e=>setLocator(e.target.value)}/></label><button disabled={!locator} onClick={()=>void run(()=>resolveLocator(locator))}>{t.manual}</button>
+            <label className="check"><input type="checkbox" checked={faceConsent} onChange={e=>{setFaceConsent(e.target.checked);setFace(false);}}/>Consent to session-only face candidate simulation</label><button disabled={!faceConsent} onClick={()=>setFace(true)}>Simulate face candidate</button>{face&&<p>SIMULATED possible local candidate. Record remains locked. No image captured.</p>}
+          </details>
         </section>
         <section className="surface"><h2>Pre-arrival access</h2><p>{link?'Candidate '+link.patientId:'Awaiting locator'}</p>
           <label>Trauma category<select value={category} onChange={e=>setCategory(e.target.value)}>{traumaCategories.map(c=><option key={c}>{c}</option>)}</select></label>
@@ -187,10 +187,6 @@ export default function Portal({portal}:{portal:PortalName}) {
         {card&&<section className="surface wide"><h2>{card.name}</h2>{warnings(card)}<p>{card.notice}</p><div className="entries">{renderEntries(card.entries)}</div></section>}
       </div>}
 
-      {portal==='hospital'&&<RegisterPatient onRegistered={p=>{setRegistered(r=>[...r,p]);void refresh().catch(()=>{});}}/>}
-      {portal==='hospital'&&<EnrollFace patients={context?.patients??[]}/>}
-      {portal==='hospital'&&<HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>}
-      {portal==='hospital'&&<FaceLookup patients={registered}/>}
       {portal==='hospital'&&<section className="surface board">
         <div className="board-heading"><h2>Incoming patients</h2><div className="header-right">
           <button aria-pressed={sound} onClick={()=>setSound(!sound)}>{sound?<Bell size={16}/>:<BellOff size={16}/>} {sound?'Sound on':'Sound off'}</button>
@@ -206,16 +202,22 @@ export default function Portal({portal}:{portal:PortalName}) {
             {a.status!=='RESOLVED'&&<button className="primary" onClick={()=>void run(async()=>{await api('platform/alerts/'+a.id+'/status',{requestId:requestId(),expectedRevision:a.revision,status:a.status==='EN_ROUTE'?'ARRIVED':'RESOLVED'});await refresh();})}>{a.status==='EN_ROUTE'?'Mark arrived':'Resolve'}</button>}
           </article>)}</div>)}</div>
       </section>}
+      {portal==='hospital'&&<details className="surface wide disclosure"><summary><span>Patient and document tools</span><span className="disclosure-meta">Registration · records · face lookup</span></summary><div className="tool-stack">
+        <RegisterPatient onRegistered={p=>{setRegistered(r=>[...r,p]);void refresh().catch(()=>{});}}/>
+        <EnrollFace patients={context?.patients??[]}/>
+        <HandwrittenUpdate patients={context?.patients??[]} onChange={refresh}/>
+        <FaceLookup patients={registered}/>
+      </div></details>}
       </>}
 
-      {portal==='patient'&&<section className="surface offline-panel"><h2>Prepared offline viewer</h2><label>Unlock phrase (12+ characters)<input type="password" value={phrase} onChange={e=>setPhrase(e.target.value)}/></label>
+      {portal==='patient'&&<details className="surface wide disclosure offline-panel"><summary><span>Prepared offline viewer</span><span className="disclosure-meta">Unlock or prepare this device</span></summary><label>Unlock phrase (12+ characters)<input type="password" value={phrase} onChange={e=>setPhrase(e.target.value)}/></label>
         {session&&profile&&<button onClick={()=>void run(async()=>{await prepareBrowserShell();await prepare(await api('platform/profiles/'+profile.id+'/snapshot',{deviceId:await browserDeviceId()}),phrase);setPhrase('');setMessage('Encrypted snapshot prepared on this browser.');})}>{t.offline}</button>}
         <button onClick={()=>void run(async()=>{const snap=await unlock(phrase);setOfflineCard(snap.card);setPhrase('');if(session&&navigator.onLine)await flushOfflineReceipts().catch(()=>{});})}>Unlock saved snapshot</button>
         {offlineCard&&<><p>Offline snapshot from {offlineCard.generatedAt}; later changes and revocations may be unavailable.</p><p>{offlineCard.notice}</p><div className="entries">{renderEntries(offlineCard.entries)}</div></>}
-      </section>}
-      {session&&isAllowed&&profile&&(portal==='patient'||portal==='lab')&&<RecordWorkflows patientId={profile.id} revision={profile.revision} onChange={refresh} clinician={portal==='lab'}/>}
-      {session&&isAllowed&&portal==='hospital'&&<BreakGlass hospital/>}
-      {session&&isAllowed&&portal==='paramedic'&&<BreakGlass link={link} purpose={purpose}/>}
+      </details>}
+      {session&&isAllowed&&portal==='patient'&&profile&&<details className="surface wide disclosure"><summary><span>Medication and document tools</span><span className="disclosure-meta">Import documents or review medication history</span></summary><RecordWorkflows patientId={profile.id} revision={profile.revision} onChange={refresh}/></details>}
+      {session&&isAllowed&&portal==='hospital'&&<details className="surface wide disclosure"><summary><span>Break-glass review</span><span className="disclosure-meta">Independent emergency access</span></summary><BreakGlass hospital/></details>}
+      {session&&isAllowed&&portal==='paramedic'&&<details className="surface wide disclosure"><summary><span>Break-glass request</span><span className="disclosure-meta">Independent emergency access</span></summary><BreakGlass link={link} purpose={purpose}/></details>}
       <footer>Nepali copy pending native-speaker review · BS conversion unavailable pending verified reference pairs</footer>
     </main>
     <Dialog.Root open={!!source} onOpenChange={open=>!open&&setSource(null)}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="dialog-content"><Dialog.Title>{t.source}</Dialog.Title><Dialog.Description>{source?.source} · {source?.date}</Dialog.Description><blockquote>{source?.excerpt}</blockquote><p>{source?.reviewed?'Clinician-authored demo evidence':'Attributed patient report'}</p><Dialog.Close>Close</Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>

@@ -1,28 +1,42 @@
 # Pran Rekha
 
-Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon. This G0 vertical slice demonstrates one synthetic patient claim, one prescription state derived from immutable evidence, and patient-specific authorization at the API boundary.
+Pran Rekha is a source-linked patient-record prototype for the Ullens Hackathon. Patients choose which signed entries may be shared in an emergency; paramedics find the record by RFID card or QR locator and get a short-lived, audited view of only that approved scope; hospitals receive pre-arrival alerts; labs sign new entries.
 
 The prototype is not a clinical system. It does not diagnose, recommend treatment, confirm current medication use, or contain real patient data.
 
+The server seeds published demo accounts and synthetic records outside production. In production (`NODE_ENV=production`), it skips all fixture seeding, leaves login fields blank, and refuses to start with a database containing the built-in demo accounts or Siddharth demo profile. Use a clean database for production.
+
+For a full plain-language tour of the code, see [CODEBASE_EXPLAINED.md](CODEBASE_EXPLAINED.md).
+
 ## Requirements
 
-- Node.js 24 or newer
+- Node.js 24 or newer (uses the built-in `node:sqlite`)
 - npm 11 or newer
 
 ## Run the demo
 
 ```powershell
 rtk npm install
-rtk npm run demo:seed
 rtk npm run dev
 ```
 
-Open `http://localhost:5173` and use the prefilled synthetic patient credentials:
+Open `http://localhost:5173`. The API (port 4100) creates `.data/pran-rekha-demo.sqlite` and the demo accounts on first start. Each portal pre-fills its own demo login:
 
-- Username: `maya.patient`
-- Password: `pran-demo-patient`
+| Portal | Username | Password |
+|---|---|---|
+| Patient (`/patient`) | `siddharth` | `pran-demo-siddharth` |
+| Paramedic (`/paramedic`) | `paramedic` | `pran-demo-paramedic` |
+| Hospital (`/hospital`) | `hospital` | `pran-demo-hospital` |
+| Lab (`/lab`) | `lab` | `pran-demo-lab` |
+| Break-glass approver (`/hospital`) | `approver` | `pran-demo-approver` |
+| Admin (API only: readers, tags) | `admin` | `pran-demo-admin` |
 
-The clinician fixture (`demo.clinician` / `pran-demo-clinician`) is deliberately unable to read the patient record because G0 does not implement emergency grants.
+Useful database commands:
+
+- `rtk npm run demo:seed` wipes the demo database back to its fixtures. Restart the API afterwards; it re-creates the portal accounts and Siddharth's record on start.
+- `rtk npm run demo:reset` deletes only `.data/pran-rekha-demo.sqlite` and its SQLite sidecars, and refuses to run unless `demo:seed` has written the synthetic-workspace marker.
+
+Environment variables (`DATABASE_PATH`, `PORT`, `PUBLIC_ORIGIN`) are listed in `.env.example`; nothing loads that file automatically.
 
 ## Install on a phone (PWA)
 
@@ -44,21 +58,21 @@ To change the branding, replace `apps/web/assets/logo-wordmark.png` (header and 
 rtk npm run typecheck
 rtk npm run test
 rtk npm run build
+rtk npm run test:e2e
 ```
 
-`demo:seed` recreates the deterministic records using the clock `2026-10-03T04:30:00.000Z`. `demo:reset` removes only `.data/pran-rekha-demo.sqlite` and its SQLite sidecars, and refuses to run without the matching synthetic-workspace marker.
+`test:e2e` runs Playwright against the production build (`npm run build` first) in headless Microsoft Edge, using a throwaway `.data/e2e.sqlite`. Stop `npm run dev` before running it.
 
 ## Workspace map
 
-- `apps/web`: React and Vite patient dashboard
-- `server`: Express API, session boundary, SQLite migrations, and seed/reset scripts
+- `apps/web`: Next.js patient, paramedic, hospital and lab portals (PWA)
+- `server`: Express API, session boundary, SQLite storage, and seed/reset scripts
 - `packages/contracts`: shared Zod schemas and wire types
-- `packages/domain`: pure evidence and medication rules
-- `fixtures`: frozen synthetic source document and truth manifest
-- `tests`: domain and service-boundary checks
+- `packages/domain`: pure medication lifecycle rules
+- `scripts`: phone tunnel, RFID simulator, and demo card enrollment
+- `firmware`: ESP32 and Arduino Uno + Raspberry Pi RFID readers (see `docs/RFID.md`, `docs/RFID_UNO.md`)
+- `tests`: unit, API and browser checks
 
-## G0 boundaries
+## Boundaries
 
-Included: fixture authentication, source-linked patient timeline, exact source preview, prescription derivation, English/Nepali UI toggle, and negative access tests.
-
-Not included: document uploads, emergency grants or cards, NFC, offline snapshots, OCR, clinical review, or public deployment. Hospital face lookup is candidate-only: registered face photos and descriptors are stored in the demo SQLite database (see `health_plan.md` §5.2). The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.
+Synthetic demo data only; no clinical review or public deployment. Face lookup is candidate-only and never unlocks a record. Face photos and descriptors saved at hospital registration are stored in the demo SQLite database and served only to hospital staff. The Nepali interface text is a draft pending native-speaker review; no native-script product name has been asserted.

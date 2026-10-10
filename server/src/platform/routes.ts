@@ -231,7 +231,7 @@ export function platformRouter(store:PlatformStore,clock:()=>Date) {
         if(input.tagUid)store.put('tag',input.tagUid,{patientId:pid,revoked:false});
         // The registering clinician may update this patient's record (e.g. handwritten notes).
         store.put('assignment','hospital:'+pid,{actor:s.id,patient:pid});
-        // Demo deviation from the session-only face rule: photo and descriptor persist in the demo database (hospital-only).
+        // With consent, the photo and descriptor are stored in the demo database and served to hospital staff only.
         if(input.photo&&input.descriptor)store.put('face',pid,{patientId:pid,descriptor:input.descriptor,photo:input.photo,photoSha256:digest(input.photo),createdBy:s.id,createdAt:clock().toISOString()} satisfies Face);
         store.receipt(pid,s.id,'Hospital patient registration',[],clock());
         return {patientId:pid,name:input.name,locator,username:input.username};
